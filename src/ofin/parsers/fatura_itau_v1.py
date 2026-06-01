@@ -12,6 +12,7 @@ from .common import (
     parse_date_full,
     strip_accents,
 )
+from .categorize import classify_fatura
 from .pdf import pdf_rows
 
 NUM = r"\d{1,3}(?:\.\d{3})*,\d{2}"
@@ -331,7 +332,8 @@ def parse_fatura(pdf_path: str | Path) -> FaturaParseResult:
         fx_val, fx_ccy, fx_rate = _has_fx_followup(rows, cand.row_idx, cand.column_x0)
         is_intl = fx_val is not None or fx_rate is not None
 
-        category, city = _extract_category_city(rows, cand.row_idx, cand.column_x0)
+        category_hint, city = _extract_category_city(rows, cand.row_idx, cand.column_x0)
+        category = classify_fatura(desc, category_hint=category_hint, is_international=is_intl)
 
         signed = value
         if _is_refund_description(desc) and signed > 0:

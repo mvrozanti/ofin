@@ -12,6 +12,7 @@ from .common import (
     parse_date_short,
     strip_accents,
 )
+from .categorize import classify_extrato
 
 NUM = r"\d{1,3}(?:\.\d{3})*,\d{2}"
 NUM_RE = re.compile(rf"^-?{NUM}-?$")
@@ -427,7 +428,7 @@ def _process_subline(text: str, when: date | None, result: ExtratoParseResult) -
     if len(nums) >= 2:
         balance_after = parse_brl(nums[-1])
 
-    category, is_sweep, is_interest, is_internal = _classify(desc, desc_norm)
+    category, is_sweep, is_interest, is_internal = classify_extrato(desc, desc_norm)
 
     result.transactions.append(
         ExtratoTx(

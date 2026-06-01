@@ -454,6 +454,160 @@ async def _category_summary(s: AsyncSession, *, sign: str, internal: bool) -> li
     return out
 
 
+@router.get("/sankey", response_class=HTMLResponse)
+async def sankey_page(
+    request: Request,
+    s: AsyncSession = Depends(session_dep),
+    months: int = 12,
+):
+    from sqlalchemy import case, func as sqlfunc
+    import json
+    today = date.today()
+    if months == 0:
+        since = date(2000, 1, 1)
+    else:
+        ms = today.month - months
+        year_shift = (-ms) // 12 + 1 if ms <= 0 else 0
+        new_month = ms + 12 * year_shift
+        since = date(today.year - year_shift, new_month or 12, 1)
+    until = today
+
+    incomes_q = (
+        select(
+            Transaction.category,
+            sqlfunc.sum(Transaction.amount).label("total"),
+        )
+        .join(Account, Transaction.account_id == Account.id)
+        .where(
+            Account.type == "BANK",
+            Transaction.amount > 0,
+            Transaction.date >= since,
+            sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
+            sqlfunc.coalesce(Transaction.raw["is_internal"].as_boolean(), False) == False,  # noqa: E712
+        )
+        .group_by(Transaction.category)
+    )
+    incomes = (await s.execute(incomes_q)).all()
+
+    spend_bank_q = (
+        select(
+            Transaction.category,
+            sqlfunc.sum(-Transaction.amount).label("total"),
+        )
+        .join(Account, Transaction.account_id == Account.id)
+        .where(
+            Account.type == "BANK",
+            Transaction.amount < 0,
+            Transaction.date >= since,
+            sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
+            sqlfunc.coalesce(Transaction.raw["is_internal"].as_boolean(), False) == False,  # noqa: E712
+        )
+        .group_by(Transaction.category)
+    )
+    spend_bank = (await s.execute(spend_bank_q)).all()
+
+    spend_credit_q = (
+        select(
+            Transaction.category,
+            sqlfunc.sum(Transaction.amount).label("total"),
+        )
+        .join(Account, Transaction.account_id == Account.id)
+        .where(
+            Account.type == "CREDIT",
+            Transaction.amount > 0,
+            Transaction.date >= since,
+        )
+        .group_by(Transaction.category)
+    )
+    spend_credit = (await s.execute(spend_credit_q)).all()
+
+    income_data = [(cat or "outros", abs(Decimal(str(total or 0)))) for cat, total in incomes if total]
+    income_data.sort(key=lambda x: x[1], reverse=True)
+    spend_bank_data = [(cat or "outros", abs(Decimal(str(total or 0)))) for cat, total in spend_bank if total]
+    spend_credit_data = [(cat or "outros", abs(Decimal(str(total or 0)))) for cat, total in spend_credit if total]
+
+    total_income = sum((v for _, v in income_data), Decimal(0))
+    total_spend_bank = sum((v for _, v in spend_bank_data), Decimal(0))
+    total_spend_credit = sum((v for _, v in spend_credit_data), Decimal(0))
+    total_spend = total_spend_bank + total_spend_credit
+    net = total_income - total_spend
+
+    fatura_payment = next((v for k, v in spend_bank_data if k == "pagamento_cartao"), Decimal(0))
+
+    nodes = []
+    seen = set()
+
+    def add(name):
+        if name not in seen:
+            nodes.append({"name": name})
+            seen.add(name)
+
+    add("CC Itaú")
+    add("Cartão Platinum")
+    for cat, _ in income_data:
+        add(f"in:{cat}")
+    for cat, _ in spend_bank_data:
+        if cat == "pagamento_cartao":
+            continue
+        add(f"out:{cat}")
+    for cat, _ in spend_credit_data:
+        add(f"card:{cat}")
+
+    links = []
+    for cat, v in income_data:
+        if v > 0:
+            links.append({"source": f"in:{cat}", "target": "CC Itaú", "value": float(v)})
+    for cat, v in spend_bank_data:
+        if cat == "pagamento_cartao" or v <= 0:
+            continue
+        links.append({"source": "CC Itaú", "target": f"out:{cat}", "value": float(v)})
+    if total_spend_credit > 0:
+        links.append({"source": "CC Itaú", "target": "Cartão Platinum", "value": float(total_spend_credit)})
+    for cat, v in spend_credit_data:
+        if v > 0:
+            links.append({"source": "Cartão Platinum", "target": f"card:{cat}", "value": float(v)})
+
+    sankey = {"nodes": nodes, "links": links}
+
+    income_cats_view = [
+        {"name": cat, "value": v, "pct": (float(v) / float(total_income)) if total_income else 0}
+        for cat, v in income_data
+    ]
+    spend_cats_total = []
+    for cat, v in spend_bank_data:
+        if cat == "pagamento_cartao":
+            continue
+        spend_cats_total.append((f"{cat} (cc)", v))
+    for cat, v in spend_credit_data:
+        spend_cats_total.append((f"{cat} (cartão)", v))
+    spend_cats_total.sort(key=lambda x: x[1], reverse=True)
+    spend_cats_view = [
+        {
+            "name": cat,
+            "value": v,
+            "pct_spend": (float(v) / float(total_spend)) if total_spend else 0,
+            "pct_income": (float(v) / float(total_income)) if total_income else 0,
+        }
+        for cat, v in spend_cats_total
+    ]
+
+    return templates.TemplateResponse(
+        "sankey.html",
+        {
+            "request": request,
+            "months": months,
+            "since": since,
+            "until": until,
+            "sankey_json": json.dumps(sankey, default=str),
+            "income_cats": income_cats_view,
+            "spend_cats": spend_cats_view,
+            "total_income": total_income,
+            "total_spend": total_spend,
+            "net": net,
+        },
+    )
+
+
 @router.get("/transactions", response_class=HTMLResponse)
 async def transactions_page(
     request: Request,
