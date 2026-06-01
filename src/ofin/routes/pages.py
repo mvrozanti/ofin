@@ -608,6 +608,50 @@ async def sankey_page(
     )
 
 
+@router.get("/analytics", response_class=HTMLResponse)
+async def analytics_page(request: Request, s: AsyncSession = Depends(session_dep)):
+    import json
+    from ..analytics import detect_subscriptions, fx_by_currency, fx_by_month, net_worth_series
+
+    subs = await detect_subscriptions(s, min_months=3, tolerance_pct=Decimal("0.20"))
+    fx_ccy = await fx_by_currency(s)
+    fx_mo = await fx_by_month(s)
+    nw = await net_worth_series(s)
+
+    nw_json = {
+        "months": [p.month for p in nw],
+        "cc": [float(p.cc_balance) if p.cc_balance is not None else None for p in nw],
+        "cdb": [float(p.cdb_balance) if p.cdb_balance is not None else None for p in nw],
+        "total": [float(p.total) if p.total is not None else None for p in nw],
+    }
+    is_json = {
+        "months": [p.month for p in nw],
+        "income": [float(p.real_income) for p in nw],
+        "spend": [float(p.real_spend) for p in nw],
+        "net": [float(p.net) for p in nw],
+    }
+    usd_months = sorted({f.month for f in fx_mo if f.currency == "USD"})
+    brl_by_mo = {f.month: float(f.brl_total) for f in fx_mo if f.currency == "USD"}
+    rate_by_mo = {f.month: float(f.avg_rate) for f in fx_mo if f.currency == "USD"}
+    fx_json = {
+        "months": usd_months,
+        "brl": [brl_by_mo.get(m, 0) for m in usd_months],
+        "rate": [rate_by_mo.get(m, None) for m in usd_months],
+    }
+
+    return templates.TemplateResponse(
+        "analytics.html",
+        {
+            "request": request,
+            "subscriptions": subs,
+            "fx_by_ccy": fx_ccy,
+            "nw_json": json.dumps(nw_json, default=str),
+            "is_json": json.dumps(is_json, default=str),
+            "fx_json": json.dumps(fx_json, default=str),
+        },
+    )
+
+
 @router.get("/transactions", response_class=HTMLResponse)
 async def transactions_page(
     request: Request,
