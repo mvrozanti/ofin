@@ -7,7 +7,7 @@ Cada linha compara o que o <b>cabeçalho do extrato Itaú reporta</b> com o que 
 Em verde: bate 100%. Categoria <b>internal</b> = self-PIX, sweep CDB, TED pra si mesmo, pagamento da própria fatura, estornos — fluxo dentro da própria rede.
 </p>
 
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead>
     <tr>
       <th>mês</th>
@@ -38,35 +38,35 @@ Em verde: bate 100%. Categoria <b>internal</b> = self-PIX, sweep CDB, TED pra si
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 
 <h2>real income por categoria (ranking)</h2>
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead><tr><th>categoria</th><th class="r">total</th><th class="r">n</th></tr></thead>
   <tbody>
   {% for c in income_cats %}
     <tr><td>{{ c.category }}</td><td class="r mono pos">{{ c.total | money }}</td><td class="r mono muted">{{ c.n }}</td></tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 
 <h2>internal flow por categoria (não conta como income)</h2>
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead><tr><th>categoria</th><th class="r">total</th><th class="r">n</th></tr></thead>
   <tbody>
   {% for c in internal_cats %}
     <tr><td class="muted">{{ c.category }}</td><td class="r mono muted">{{ c.total | money }}</td><td class="r mono muted">{{ c.n }}</td></tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 
 <h2>real spend por categoria</h2>
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead><tr><th>categoria</th><th class="r">total</th><th class="r">n</th></tr></thead>
   <tbody>
   {% for c in spend_cats %}
     <tr><td>{{ c.category }}</td><td class="r mono neg">{{ c.total | money }}</td><td class="r mono muted">{{ c.n }}</td></tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% endblock %}

@@ -11,7 +11,7 @@
 
 {% if results %}
 <h2>results</h2>
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead><tr><th>file</th><th>type</th><th class="r">tx</th><th class="r">warnings</th><th>doc_id</th></tr></thead>
   <tbody>
   {% for r in results %}
@@ -24,6 +24,6 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 {% endif %}
 {% endblock %}

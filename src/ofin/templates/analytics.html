@@ -3,14 +3,14 @@
 {% block body %}
 
 <h2>net worth · patrimônio mensal</h2>
-<div id="nw-chart" style="width: 100%; height: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;"></div>
+<div id="nw-chart" class="panel chart" style="height: clamp(280px, 50vh, 420px); padding: 0;"></div>
 
 <h2>income vs spend mensal (real)</h2>
-<div id="is-chart" style="width: 100%; height: 320px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;"></div>
+<div id="is-chart" class="panel chart" style="height: clamp(260px, 45vh, 380px); padding: 0;"></div>
 
 <h2>assinaturas / cobranças recorrentes detectadas</h2>
 <p class="muted">merchants que aparecem em ≥3 meses distintos no cartão com valor consistente (±60%).</p>
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead><tr><th>merchant</th><th class="r">avg</th><th class="r">último</th><th>último visto</th><th class="r">meses ativos</th><th class="r">total gasto</th></tr></thead>
   <tbody>
   {% for sub in subscriptions %}
@@ -24,10 +24,10 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 
 <h2>FX exposure · gasto internacional por moeda</h2>
-<table class="grid">
+<div class="tbl-wrap"><table class="grid">
   <thead><tr><th>moeda</th><th class="r">n tx</th><th class="r">total original</th><th class="r">total BRL</th><th class="r">rate médio</th></tr></thead>
   <tbody>
   {% for fx in fx_by_ccy %}
@@ -40,10 +40,10 @@
     </tr>
   {% endfor %}
   </tbody>
-</table>
+</table></div>
 
 <h2>FX por mês (rate médio + volume BRL)</h2>
-<div id="fx-chart" style="width: 100%; height: 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;"></div>
+<div id="fx-chart" class="panel chart" style="height: clamp(280px, 50vh, 420px); padding: 0;"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script>
@@ -62,7 +62,7 @@ nwChart.setOption({
     return params[0].axisValueLabel + '<br/>' + params.map(p => p.marker + ' ' + p.seriesName + ': <b>' + fmtBRL(p.value) + '</b>').join('<br/>');
   }},
   legend: { textStyle: { color: '#e6eaf0' } },
-  grid: { left: 60, right: 30, top: 40, bottom: 40 },
+  grid: { left: 56, right: 16, top: 40, bottom: 40, containLabel: true },
   xAxis: { type: 'category', data: nwData.months, axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3' } },
   yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: (v) => 'R$ ' + (v/1000).toFixed(1) + 'k' }, splitLine: { lineStyle: { color: '#1f242c' } } },
   series: [
@@ -77,7 +77,7 @@ isChart.setOption({
   backgroundColor: 'transparent',
   tooltip: { trigger: 'axis', formatter: (params) => params[0].axisValueLabel + '<br/>' + params.map(p => p.marker + ' ' + p.seriesName + ': <b>' + fmtBRL(p.value) + '</b>').join('<br/>') },
   legend: { textStyle: { color: '#e6eaf0' } },
-  grid: { left: 60, right: 30, top: 40, bottom: 40 },
+  grid: { left: 56, right: 16, top: 40, bottom: 40, containLabel: true },
   xAxis: { type: 'category', data: isData.months, axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3' } },
   yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: (v) => 'R$ ' + (v/1000).toFixed(1) + 'k' }, splitLine: { lineStyle: { color: '#1f242c' } } },
   series: [
@@ -92,7 +92,7 @@ fxChart.setOption({
   backgroundColor: 'transparent',
   tooltip: { trigger: 'axis' },
   legend: { textStyle: { color: '#e6eaf0' } },
-  grid: { left: 60, right: 60, top: 40, bottom: 40 },
+  grid: { left: 56, right: 56, top: 40, bottom: 40, containLabel: true },
   xAxis: { type: 'category', data: fxData.months, axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3' } },
   yAxis: [
     { type: 'value', name: 'R$', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: (v) => 'R$ ' + v }, splitLine: { lineStyle: { color: '#1f242c' } } },

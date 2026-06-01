@@ -23,7 +23,7 @@ cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão pr�
 
 <section>
   <h2>cashflow mensal (real, exclui sweep CDB)</h2>
-  <table class="grid">
+  <div class="tbl-wrap"><table class="grid">
     <thead><tr><th>mês</th><th class="r">entradas</th><th class="r">saídas</th><th class="r">net</th></tr></thead>
     <tbody>
     {% for m in cashflow %}
@@ -35,13 +35,13 @@ cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão pr�
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 
 <section class="two-col">
   <div>
     <h2>spend por categoria (30d)</h2>
-    <table class="grid">
+    <div class="tbl-wrap"><table class="grid">
       <thead><tr><th>categoria</th><th class="r">spend</th><th class="r">tx</th></tr></thead>
       <tbody>
       {% for c in categories %}
@@ -52,12 +52,12 @@ cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão pr�
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 
   <div>
     <h2>top merchants (30d)</h2>
-    <table class="grid">
+    <div class="tbl-wrap"><table class="grid">
       <thead><tr><th>merchant</th><th class="r">spend</th><th class="r">tx</th></tr></thead>
       <tbody>
       {% for m in merchants %}
@@ -68,13 +68,13 @@ cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão pr�
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </section>
 
 <section>
   <h2>contas</h2>
-  <table class="grid">
+  <div class="tbl-wrap"><table class="grid">
     <thead><tr><th>nome</th><th>tipo</th><th>subtipo</th><th class="r">saldo</th></tr></thead>
     <tbody>
     {% for a in accounts %}
@@ -86,6 +86,6 @@ cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão pr�
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endblock %}
