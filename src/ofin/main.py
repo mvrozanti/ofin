@@ -7,9 +7,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
-from .db import engine
+from .db import engine, session
 from .models import Base
-from .routes import api, pages
+from .parsers.seed_rules import seed_default_rules
+from .routes import api, pages, rules
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, settings().log_level.upper(), logging.INFO)),
@@ -26,6 +27,10 @@ log = structlog.get_logger()
 async def lifespan(app: FastAPI):
     async with engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    async with session() as s:
+        n = await seed_default_rules(s)
+        if n:
+            log.info("seeded_rules", n=n)
     log.info("ofin_started")
     yield
 
@@ -37,6 +42,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 app.include_router(pages.router)
 app.include_router(api.router)
+app.include_router(rules.router)
 
 
 @app.get("/healthz")

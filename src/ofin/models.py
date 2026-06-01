@@ -70,6 +70,8 @@ class Transaction(Base):
     raw: Mapped[dict | None] = mapped_column(JSON)
     document_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
     raw_line: Mapped[str | None] = mapped_column(Text)
+    mega: Mapped[str | None] = mapped_column(String(64), index=True)
+    rule_id: Mapped[int | None] = mapped_column(ForeignKey("category_rules.id", ondelete="SET NULL"), index=True)
 
     account: Mapped["Account"] = relationship(back_populates="transactions")
 
@@ -134,3 +136,21 @@ class ParseWarning(Base):
     raw_line: Mapped[str | None] = mapped_column(Text)
     diff: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CategoryRule(Base):
+    __tablename__ = "category_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    pattern_type: Mapped[str] = mapped_column(String(16))
+    pattern: Mapped[str] = mapped_column(String(256), index=True)
+    account_type: Mapped[str | None] = mapped_column(String(16))
+    sign: Mapped[str | None] = mapped_column(String(8))
+    mega: Mapped[str] = mapped_column(String(64), index=True)
+    category: Mapped[str] = mapped_column(String(128), index=True)
+    is_internal: Mapped[bool] = mapped_column(default=False)
+    priority: Mapped[int] = mapped_column(default=100)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

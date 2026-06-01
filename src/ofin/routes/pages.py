@@ -472,8 +472,9 @@ async def sankey_page(
         since = date(today.year - year_shift, new_month or 12, 1)
     until = today
 
-    incomes_q = (
+    income_q = (
         select(
+            Transaction.mega,
             Transaction.category,
             sqlfunc.sum(Transaction.amount).label("total"),
         )
@@ -485,12 +486,13 @@ async def sankey_page(
             sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
             sqlfunc.coalesce(Transaction.raw["is_internal"].as_boolean(), False) == False,  # noqa: E712
         )
-        .group_by(Transaction.category)
+        .group_by(Transaction.mega, Transaction.category)
     )
-    incomes = (await s.execute(incomes_q)).all()
+    incomes = (await s.execute(income_q)).all()
 
     spend_bank_q = (
         select(
+            Transaction.mega,
             Transaction.category,
             sqlfunc.sum(-Transaction.amount).label("total"),
         )
@@ -502,12 +504,13 @@ async def sankey_page(
             sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
             sqlfunc.coalesce(Transaction.raw["is_internal"].as_boolean(), False) == False,  # noqa: E712
         )
-        .group_by(Transaction.category)
+        .group_by(Transaction.mega, Transaction.category)
     )
     spend_bank = (await s.execute(spend_bank_q)).all()
 
     spend_credit_q = (
         select(
+            Transaction.mega,
             Transaction.category,
             sqlfunc.sum(Transaction.amount).label("total"),
         )
@@ -517,25 +520,23 @@ async def sankey_page(
             Transaction.amount > 0,
             Transaction.date >= since,
         )
-        .group_by(Transaction.category)
+        .group_by(Transaction.mega, Transaction.category)
     )
     spend_credit = (await s.execute(spend_credit_q)).all()
 
-    income_data = [(cat or "outros", abs(Decimal(str(total or 0)))) for cat, total in incomes if total]
-    income_data.sort(key=lambda x: x[1], reverse=True)
-    spend_bank_data = [(cat or "outros", abs(Decimal(str(total or 0)))) for cat, total in spend_bank if total]
-    spend_credit_data = [(cat or "outros", abs(Decimal(str(total or 0)))) for cat, total in spend_credit if total]
+    income_data = [(mega or "renda", cat or "outros", abs(Decimal(str(total or 0)))) for mega, cat, total in incomes if total]
+    income_data.sort(key=lambda x: x[2], reverse=True)
+    spend_bank_data = [(mega or "outros", cat or "outros", abs(Decimal(str(total or 0)))) for mega, cat, total in spend_bank if total]
+    spend_credit_data = [(mega or "outros", cat or "outros", abs(Decimal(str(total or 0)))) for mega, cat, total in spend_credit if total]
 
-    total_income = sum((v for _, v in income_data), Decimal(0))
-    total_spend_bank = sum((v for _, v in spend_bank_data), Decimal(0))
-    total_spend_credit = sum((v for _, v in spend_credit_data), Decimal(0))
+    total_income = sum((v for _, _, v in income_data), Decimal(0))
+    total_spend_bank = sum((v for _, _, v in spend_bank_data), Decimal(0))
+    total_spend_credit = sum((v for _, _, v in spend_credit_data), Decimal(0))
     total_spend = total_spend_bank + total_spend_credit
     net = total_income - total_spend
 
-    fatura_payment = next((v for k, v in spend_bank_data if k == "pagamento_cartao"), Decimal(0))
-
-    nodes = []
-    seen = set()
+    nodes: list[dict] = []
+    seen: set[str] = set()
 
     def add(name):
         if name not in seen:
@@ -543,43 +544,65 @@ async def sankey_page(
             seen.add(name)
 
     add("CC Itaú")
-    add("Cartão Platinum")
-    for cat, _ in income_data:
-        add(f"in:{cat}")
-    for cat, _ in spend_bank_data:
-        if cat == "pagamento_cartao":
-            continue
-        add(f"out:{cat}")
-    for cat, _ in spend_credit_data:
-        add(f"card:{cat}")
+    if total_spend_credit > 0:
+        add("Cartão Platinum")
 
-    links = []
-    for cat, v in income_data:
+    income_megas_sum: dict[str, Decimal] = {}
+    for mega, cat, v in income_data:
+        income_megas_sum[mega] = income_megas_sum.get(mega, Decimal(0)) + v
+    for mega in income_megas_sum:
+        add(f"renda:{mega}")
+    for mega, cat, v in income_data:
+        add(f"in:{mega}/{cat}")
+
+    bank_megas_sum: dict[str, Decimal] = {}
+    for mega, cat, v in spend_bank_data:
+        bank_megas_sum[mega] = bank_megas_sum.get(mega, Decimal(0)) + v
+    for mega in bank_megas_sum:
+        add(f"out:{mega}")
+    for mega, cat, v in spend_bank_data:
+        add(f"sub:{mega}/{cat}")
+
+    card_megas_sum: dict[str, Decimal] = {}
+    for mega, cat, v in spend_credit_data:
+        card_megas_sum[mega] = card_megas_sum.get(mega, Decimal(0)) + v
+    for mega in card_megas_sum:
+        add(f"card:{mega}")
+    for mega, cat, v in spend_credit_data:
+        add(f"csub:{mega}/{cat}")
+
+    links: list[dict] = []
+    for mega, cat, v in income_data:
         if v > 0:
-            links.append({"source": f"in:{cat}", "target": "CC Itaú", "value": float(v)})
-    for cat, v in spend_bank_data:
-        if cat == "pagamento_cartao" or v <= 0:
-            continue
-        links.append({"source": "CC Itaú", "target": f"out:{cat}", "value": float(v)})
+            links.append({"source": f"in:{mega}/{cat}", "target": f"renda:{mega}", "value": float(v)})
+    for mega, total in income_megas_sum.items():
+        if total > 0:
+            links.append({"source": f"renda:{mega}", "target": "CC Itaú", "value": float(total)})
+    for mega, total in bank_megas_sum.items():
+        if total > 0:
+            links.append({"source": "CC Itaú", "target": f"out:{mega}", "value": float(total)})
+    for mega, cat, v in spend_bank_data:
+        if v > 0:
+            links.append({"source": f"out:{mega}", "target": f"sub:{mega}/{cat}", "value": float(v)})
     if total_spend_credit > 0:
         links.append({"source": "CC Itaú", "target": "Cartão Platinum", "value": float(total_spend_credit)})
-    for cat, v in spend_credit_data:
+    for mega, total in card_megas_sum.items():
+        if total > 0:
+            links.append({"source": "Cartão Platinum", "target": f"card:{mega}", "value": float(total)})
+    for mega, cat, v in spend_credit_data:
         if v > 0:
-            links.append({"source": "Cartão Platinum", "target": f"card:{cat}", "value": float(v)})
+            links.append({"source": f"card:{mega}", "target": f"csub:{mega}/{cat}", "value": float(v)})
 
     sankey = {"nodes": nodes, "links": links}
 
-    income_cats_view = [
-        {"name": cat, "value": v, "pct": (float(v) / float(total_income)) if total_income else 0}
-        for cat, v in income_data
-    ]
+    income_cats_view = []
+    for mega, cat, v in income_data:
+        income_cats_view.append({"name": f"{mega} / {cat}", "value": v, "pct": (float(v) / float(total_income)) if total_income else 0})
     spend_cats_total = []
-    for cat, v in spend_bank_data:
-        if cat == "pagamento_cartao":
-            continue
-        spend_cats_total.append((f"{cat} (cc)", v))
-    for cat, v in spend_credit_data:
-        spend_cats_total.append((f"{cat} (cartão)", v))
+    for mega, cat, v in spend_bank_data:
+        spend_cats_total.append((f"{mega} / {cat} (cc)", v))
+    for mega, cat, v in spend_credit_data:
+        spend_cats_total.append((f"{mega} / {cat} (cartão)", v))
     spend_cats_total.sort(key=lambda x: x[1], reverse=True)
     spend_cats_view = [
         {

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}rules{% endblock %}
+{% block body %}
+
+{% if recategorized %}
+<div class="panel" style="border-color: rgba(74,222,128,0.4)">
+  <b class="pos">recategorizado:</b> {{ recategorized }} transações reclassificadas.
+</div>
+{% endif %}
+
+<h2>nova regra</h2>
+<div class="panel">
+<form method="post" action="/rules" style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; align-items: end;">
+  <label>type
+    <select name="pattern_type" required>
+      <option value="contains">contains</option>
+      <option value="startswith">startswith</option>
+      <option value="exact">exact</option>
+      <option value="regex">regex</option>
+    </select>
+  </label>
+  <label style="grid-column: span 2">pattern
+    <input name="pattern" required placeholder="bifinity">
+  </label>
+  <label>mega
+    <input name="mega" required placeholder="financeiro">
+  </label>
+  <label>category
+    <input name="category" required placeholder="bifinity">
+  </label>
+  <label>account
+    <select name="account_type">
+      <option value="">qualquer</option>
+      <option value="BANK">BANK</option>
+      <option value="CREDIT">CREDIT</option>
+    </select>
+  </label>
+  <label>sign
+    <select name="sign">
+      <option value="">qualquer</option>
+      <option value="debit">debit</option>
+      <option value="credit">credit</option>
+    </select>
+  </label>
+  <label>priority
+    <input name="priority" value="100" type="number" min="0" max="999">
+  </label>
+  <label style="grid-column: span 2"><input type="checkbox" name="is_internal" value="1"> is internal</label>
+  <button class="btn" type="submit">criar</button>
+</form>
+</div>
+
+<div class="toolbar">
+  <form method="get" action="/rules" style="display:flex;gap:8px;align-items:center;">
+    <select name="mega" onchange="this.form.submit()">
+      <option value="">todas megas</option>
+      {% for m, n in megas %}
+        <option value="{{ m }}" {% if mega_filter == m %}selected{% endif %}>{{ m }} ({{ n }})</option>
+      {% endfor %}
+    </select>
+    <input name="search" value="{{ search }}" placeholder="pattern contém…">
+    <button class="btn" type="submit">buscar</button>
+  </form>
+  <form method="post" action="/recategorize">
+    <button class="btn" type="submit">recategorizar todas as tx</button>
+  </form>
+</div>
+
+<table class="grid">
+  <thead>
+    <tr>
+      <th class="r">prio</th>
+      <th>type</th>
+      <th>pattern</th>
+      <th>account</th>
+      <th>sign</th>
+      <th>mega</th>
+      <th>category</th>
+      <th class="r">matches</th>
+      <th>flag</th>
+      <th>ações</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rules %}
+    <tr style="{% if not r.enabled %}opacity:0.5{% endif %}">
+      <td class="r mono muted">{{ r.priority }}</td>
+      <td class="muted">{{ r.pattern_type }}</td>
+      <td class="mono">{{ r.pattern }}</td>
+      <td class="muted">{{ r.account_type or '*' }}</td>
+      <td class="muted">{{ r.sign or '*' }}</td>
+      <td>{{ r.mega }}</td>
+      <td class="muted">{{ r.category }}</td>
+      <td class="r mono">
+        {% set n = match_map.get(r.id, 0) %}
+        {% if n > 0 %}<a href="/transactions?rule={{ r.id }}">{{ n }}</a>{% else %}—{% endif %}
+      </td>
+      <td>
+        {% if r.is_internal %}<span class="badge info">internal</span>{% endif %}
+        {% if not r.enabled %}<span class="badge warn">off</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="/rules/{{ r.id }}/toggle" style="display:inline">
+          <button class="btn" style="padding:2px 8px;font-size:11px;background:#1f242c;color:#e6eaf0">{% if r.enabled %}off{% else %}on{% endif %}</button>
+        </form>
+        <form method="post" action="/rules/{{ r.id }}/delete" style="display:inline" onsubmit="return confirm('apagar?')">
+          <button class="btn danger" style="padding:2px 8px;font-size:11px">×</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

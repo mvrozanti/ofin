@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import session
 from .models import Account, Document, Item, ParseWarning, Transaction
+from .parsers.categorize_engine import classify_tx
 from .parsers.common import deterministic_tx_id, sha256_bytes
 from .parsers.extrato_itau_v1 import (
     ExtratoParseResult,
@@ -186,7 +187,7 @@ async def _replace_doc_transactions(
     return len(rows)
 
 
-def _extrato_to_tx_rows(doc_id: str, account_id: str, result: ExtratoParseResult) -> list[dict]:
+async def _extrato_to_tx_rows(s_db: AsyncSession, doc_id: str, account_id: str, result: ExtratoParseResult) -> list[dict]:
     rows = []
     s = result.summary
     period = (s.period_year, s.period_month)
@@ -197,6 +198,14 @@ def _extrato_to_tx_rows(doc_id: str, account_id: str, result: ExtratoParseResult
         seen[key] = occ + 1
         tx_id = deterministic_tx_id(doc_id, t.when, t.raw_line, t.amount, occ)
         type_ = "CREDIT" if t.amount > 0 else "DEBIT"
+        sign = "credit" if t.amount > 0 else "debit"
+        mega, category, is_internal_eng, rule_id = await classify_tx(
+            s_db, description=t.description, account_type="BANK", sign=sign,
+        )
+        if t.is_sweep:
+            is_internal_final = True
+        else:
+            is_internal_final = is_internal_eng or t.is_internal
         merchant = None
         payment_data = None
         d_lower = (t.description_norm or t.description).lower()
@@ -212,7 +221,7 @@ def _extrato_to_tx_rows(doc_id: str, account_id: str, result: ExtratoParseResult
                 "description": t.description,
                 "description_raw": t.raw_line,
                 "type": type_,
-                "category": t.category,
+                "category": category,
                 "category_id": None,
                 "payment_data": payment_data,
                 "credit_card_metadata": None,
@@ -222,16 +231,18 @@ def _extrato_to_tx_rows(doc_id: str, account_id: str, result: ExtratoParseResult
                     "doc_period": f"{period[0]:04d}-{period[1]:02d}",
                     "is_sweep": t.is_sweep,
                     "is_interest": t.is_interest,
-                    "is_internal": t.is_internal,
+                    "is_internal": is_internal_final,
                 },
                 "document_id": doc_id,
                 "raw_line": t.raw_line,
+                "mega": mega,
+                "rule_id": rule_id,
             }
         )
     return rows
 
 
-def _fatura_to_tx_rows(doc_id: str, account_id: str, result: FaturaParseResult) -> list[dict]:
+async def _fatura_to_tx_rows(s_db: AsyncSession, doc_id: str, account_id: str, result: FaturaParseResult) -> list[dict]:
     rows = []
     s = result.summary
     seen: dict[tuple, int] = {}
@@ -256,9 +267,14 @@ def _fatura_to_tx_rows(doc_id: str, account_id: str, result: FaturaParseResult) 
                 "credit_card_metadata": {"kind": "payment"},
                 "merchant": None,
                 "date": pmt.when,
-                "raw": {"posting_date": s.posting_date.isoformat() if s.posting_date else None},
+                "raw": {
+                    "posting_date": s.posting_date.isoformat() if s.posting_date else None,
+                    "is_internal": True,
+                },
                 "document_id": doc_id,
                 "raw_line": pmt.raw_line,
+                "mega": "internal",
+                "rule_id": None,
             }
         )
     for t in result.transactions:
@@ -267,6 +283,15 @@ def _fatura_to_tx_rows(doc_id: str, account_id: str, result: FaturaParseResult) 
         seen[key] = occ + 1
         tx_id = deterministic_tx_id(doc_id, t.when, t.raw_line, t.amount_brl, occ)
         type_ = "CREDIT" if t.amount_brl < 0 else "DEBIT"
+        sign = "credit" if t.amount_brl < 0 else "debit"
+        mega, category, is_internal_eng, rule_id = await classify_tx(
+            s_db,
+            description=t.merchant,
+            account_type="CREDIT",
+            sign=sign,
+            is_international=t.is_international,
+            fatura_category_hint=t.category,
+        )
         merchant = {"name": t.merchant} if t.merchant else None
         cc_meta = {
             "category_label": t.category,
@@ -289,15 +314,20 @@ def _fatura_to_tx_rows(doc_id: str, account_id: str, result: FaturaParseResult) 
                 "description": t.merchant,
                 "description_raw": t.raw_line,
                 "type": type_,
-                "category": t.category,
+                "category": category,
                 "category_id": None,
                 "payment_data": None,
                 "credit_card_metadata": cc_meta,
                 "merchant": merchant,
                 "date": t.when,
-                "raw": {"posting_date": s.posting_date.isoformat() if s.posting_date else None},
+                "raw": {
+                    "posting_date": s.posting_date.isoformat() if s.posting_date else None,
+                    "is_internal": is_internal_eng,
+                },
                 "document_id": doc_id,
                 "raw_line": t.raw_line,
+                "mega": mega,
+                "rule_id": rule_id,
             }
         )
     return rows
@@ -392,7 +422,7 @@ async def import_pdf(s: AsyncSession, pdf_path: str | Path) -> dict:
             file_sha256=file_sha,
             raw_text=text,
         )
-        tx_rows = _extrato_to_tx_rows(doc_id, ACCOUNT_CHECKING_ID, result)
+        tx_rows = await _extrato_to_tx_rows(s, doc_id, ACCOUNT_CHECKING_ID, result)
         await _replace_warnings(s, doc_id, warnings)
         n = await _replace_doc_transactions(s, doc_id, tx_rows)
         await _update_account_balance_from_latest(s, ACCOUNT_CHECKING_ID)
@@ -428,7 +458,7 @@ async def import_pdf(s: AsyncSession, pdf_path: str | Path) -> dict:
             file_sha256=file_sha,
             raw_text=text,
         )
-        tx_rows = _fatura_to_tx_rows(doc_id, ACCOUNT_CREDIT_ID, result)
+        tx_rows = await _fatura_to_tx_rows(s, doc_id, ACCOUNT_CREDIT_ID, result)
         await _replace_warnings(s, doc_id, warnings)
         n = await _replace_doc_transactions(s, doc_id, tx_rows)
         return {"doc_id": doc_id, "type": "fatura", "tx": n, "warnings": len(warnings)}
@@ -445,6 +475,11 @@ async def init_schema() -> None:
 
 async def import_directory(directory: str | Path) -> dict:
     await init_schema()
+    from .parsers.seed_rules import seed_default_rules
+    async with session() as s:
+        n = await seed_default_rules(s)
+        if n:
+            log.info("seeded_rules_cli", n=n)
     d = Path(directory)
     pdfs = sorted(d.glob("*.pdf"))
     results = []
