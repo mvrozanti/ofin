@@ -1,0 +1,136 @@
+from datetime import date, datetime
+from decimal import Decimal
+
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    type_annotation_map = {dict: JSONB, list: JSONB}
+
+
+class Item(Base):
+    __tablename__ = "items"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    connector_id: Mapped[int | None] = mapped_column()
+    connector_name: Mapped[str | None] = mapped_column(String(128))
+    connector_image: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(64))
+    status_detail: Mapped[dict | None] = mapped_column(JSON)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    raw: Mapped[dict | None] = mapped_column(JSON)
+
+    accounts: Mapped[list["Account"]] = relationship(back_populates="item", cascade="all, delete-orphan")
+
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str | None] = mapped_column(String(32))
+    subtype: Mapped[str | None] = mapped_column(String(32))
+    name: Mapped[str | None] = mapped_column(String(256))
+    marketing_name: Mapped[str | None] = mapped_column(String(256))
+    number: Mapped[str | None] = mapped_column(String(64))
+    balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    currency_code: Mapped[str | None] = mapped_column(String(8))
+    owner: Mapped[str | None] = mapped_column(String(256))
+    taxnumber: Mapped[str | None] = mapped_column(String(32))
+    credit_data: Mapped[dict | None] = mapped_column(JSON)
+    bank_data: Mapped[dict | None] = mapped_column(JSON)
+    raw: Mapped[dict | None] = mapped_column(JSON)
+
+    item: Mapped[Item] = relationship(back_populates="accounts")
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="account", cascade="all, delete-orphan")
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    currency_code: Mapped[str | None] = mapped_column(String(8))
+    description: Mapped[str | None] = mapped_column(Text)
+    description_raw: Mapped[str | None] = mapped_column(Text)
+    type: Mapped[str | None] = mapped_column(String(16))
+    category: Mapped[str | None] = mapped_column(String(128), index=True)
+    category_id: Mapped[str | None] = mapped_column(String(64))
+    payment_data: Mapped[dict | None] = mapped_column(JSON)
+    credit_card_metadata: Mapped[dict | None] = mapped_column(JSON)
+    merchant: Mapped[dict | None] = mapped_column(JSON)
+    date: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    raw: Mapped[dict | None] = mapped_column(JSON)
+    document_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"), index=True)
+    raw_line: Mapped[str | None] = mapped_column(Text)
+
+    account: Mapped["Account"] = relationship(back_populates="transactions")
+
+
+class Investment(Base):
+    __tablename__ = "investments"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), index=True)
+    type: Mapped[str | None] = mapped_column(String(64))
+    subtype: Mapped[str | None] = mapped_column(String(64))
+    name: Mapped[str | None] = mapped_column(String(256))
+    code: Mapped[str | None] = mapped_column(String(64))
+    issuer: Mapped[str | None] = mapped_column(String(256))
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(28, 8))
+    balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    value: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    amount_original: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    amount_profit: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    currency_code: Mapped[str | None] = mapped_column(String(8))
+    date: Mapped[date | None] = mapped_column(Date)
+    due_date: Mapped[date | None] = mapped_column(Date)
+    raw: Mapped[dict | None] = mapped_column(JSON)
+
+
+class Webhook(Base):
+    __tablename__ = "webhooks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    event: Mapped[str | None] = mapped_column(String(64))
+    item_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    payload: Mapped[dict | None] = mapped_column(JSON)
+
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_path: Mapped[str] = mapped_column(Text)
+    document_type: Mapped[str] = mapped_column(String(32), index=True)
+    issuer: Mapped[str] = mapped_column(String(64), index=True)
+    parser_version: Mapped[str] = mapped_column(String(64))
+    period_year: Mapped[int | None] = mapped_column(index=True)
+    period_month: Mapped[int | None] = mapped_column(index=True)
+    account_id: Mapped[str | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), index=True)
+    parsed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    summary: Mapped[dict | None] = mapped_column(JSON)
+    file_size: Mapped[int | None] = mapped_column()
+    file_sha256: Mapped[str | None] = mapped_column(String(64))
+    raw_text: Mapped[str | None] = mapped_column(Text)
+
+
+class ParseWarning(Base):
+    __tablename__ = "parse_warnings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    severity: Mapped[str] = mapped_column(String(16), index=True)
+    code: Mapped[str] = mapped_column(String(64), index=True)
+    message: Mapped[str] = mapped_column(Text)
+    raw_line: Mapped[str | None] = mapped_column(Text)
+    diff: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

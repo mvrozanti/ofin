@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.document_type }} {{ doc.period_year }}-{{ "%02d"|format(doc.period_month or 0) }}{% endblock %}
+{% block body %}
+<p><a href="/documents">← all documents</a></p>
+<h2>{{ doc.document_type }} · {{ doc.period_year }}-{{ "%02d"|format(doc.period_month or 0) }} · {{ doc.source_path.split('/')[-1] }}</h2>
+
+{% if warnings %}
+<section>
+  <h2>warnings</h2>
+  <div class="warnings">
+  {% for w in warnings %}
+    <div class="warning {{ w.severity }}">
+      <span class="code">{{ w.code }}</span>{{ w.message }}
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="split">
+  <div>
+    <h2>summary</h2>
+    <div class="panel">
+      <div class="kv">
+      {% for k, v in summary_kv %}
+        <div class="k">{{ k }}</div>
+        <div class="v mono">{{ v }}</div>
+      {% endfor %}
+      </div>
+    </div>
+
+    <h2>reconciliation</h2>
+    <div class="panel">
+      <div class="kv">
+      {% for k, expected, computed, ok in recon %}
+        <div class="k">{{ k }}</div>
+        <div class="v mono {% if ok %}pos{% else %}neg{% endif %}">{{ computed }} {% if not ok %}<span class="muted">vs {{ expected }}</span>{% endif %}</div>
+      {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <h2>raw text</h2>
+    <div class="rawtext">{{ doc.raw_text }}</div>
+  </div>
+</section>
+
+<h2>transactions ({{ transactions | length }})</h2>
+<table class="grid">
+  <thead>
+    <tr>
+      <th>date</th>
+      <th>description</th>
+      <th>category</th>
+      <th class="r">amount</th>
+      <th class="r">balance</th>
+      <th>flag</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for t in transactions %}
+    <tr>
+      <td class="mono">{{ t.date }}</td>
+      <td>{{ t.description }}</td>
+      <td class="muted">{{ t.category or '—' }}</td>
+      <td class="r mono {% if t.amount >= 0 %}pos{% else %}neg{% endif %}">{{ t.amount | money }}</td>
+      <td class="r mono muted">{{ t.balance | money if t.balance is not none else '' }}</td>
+      <td>
+        {% set raw = t.raw or {} %}
+        {% if raw.is_sweep %}<span class="badge info">sweep</span>{% endif %}
+        {% if raw.is_interest %}<span class="badge info">juros</span>{% endif %}
+        {% set ccm = t.credit_card_metadata or {} %}
+        {% if ccm.is_international %}<span class="badge info">intl</span>{% endif %}
+        {% if ccm.kind == 'payment' %}<span class="badge ok">pagamento</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

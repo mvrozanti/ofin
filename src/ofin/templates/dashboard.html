@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}dashboard{% endblock %}
+{% block body %}
+<section class="cards">
+  <div class="card big">
+    <div class="lbl">patrimônio (CC + CDB)</div>
+    <div class="val mono">{{ patrimonio | money }}</div>
+  </div>
+  <div class="card">
+    <div class="lbl">saldo CC</div>
+    <div class="val mono">{{ cc_balance | money }}</div>
+  </div>
+  <div class="card">
+    <div class="lbl">saldo CDB Aplic Aut Mais</div>
+    <div class="val mono">{{ cdb_balance | money }}</div>
+  </div>
+</section>
+
+<p class="muted" style="margin-top:8px">
+cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão próprio, estornos) e mostra só dinheiro entrando/saindo de verdade.
+<a href="/breakdown">ver breakdown completo por mês →</a>
+</p>
+
+<section>
+  <h2>cashflow mensal (real, exclui sweep CDB)</h2>
+  <table class="grid">
+    <thead><tr><th>mês</th><th class="r">entradas</th><th class="r">saídas</th><th class="r">net</th></tr></thead>
+    <tbody>
+    {% for m in cashflow %}
+      <tr>
+        <td class="mono">{{ m.month }}</td>
+        <td class="r mono pos">{{ m.inflow | money }}</td>
+        <td class="r mono neg">{{ m.outflow | money }}</td>
+        <td class="r mono {% if m.net >= 0 %}pos{% else %}neg{% endif %}">{{ m.net | money }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="two-col">
+  <div>
+    <h2>spend por categoria (30d)</h2>
+    <table class="grid">
+      <thead><tr><th>categoria</th><th class="r">spend</th><th class="r">tx</th></tr></thead>
+      <tbody>
+      {% for c in categories %}
+        <tr>
+          <td>{{ c.category }}</td>
+          <td class="r mono neg">{{ c.spend | money }}</td>
+          <td class="r mono muted">{{ c.count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>top merchants (30d)</h2>
+    <table class="grid">
+      <thead><tr><th>merchant</th><th class="r">spend</th><th class="r">tx</th></tr></thead>
+      <tbody>
+      {% for m in merchants %}
+        <tr>
+          <td>{{ m.merchant }}</td>
+          <td class="r mono neg">{{ m.spend | money }}</td>
+          <td class="r mono muted">{{ m.count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>contas</h2>
+  <table class="grid">
+    <thead><tr><th>nome</th><th>tipo</th><th>subtipo</th><th class="r">saldo</th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td>{{ a.name }}</td>
+        <td class="muted">{{ a.type or '—' }}</td>
+        <td class="muted">{{ a.subtype or '—' }}</td>
+        <td class="r mono">{{ a.balance | money if a.balance is not none else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

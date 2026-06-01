@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}transactions{% endblock %}
+{% block body %}
+<section>
+  <h2>transactions · last {{ limit }}</h2>
+  <table class="grid">
+    <thead><tr><th>date</th><th>description</th><th>category</th><th>type</th><th class="r">amount</th></tr></thead>
+    <tbody>
+    {% for t in transactions %}
+      <tr>
+        <td>{{ t.date }}</td>
+        <td>{{ t.description or t.description_raw or '—' }}</td>
+        <td>{{ t.category or '—' }}</td>
+        <td>{{ t.type or '—' }}</td>
+        <td class="r {% if t.amount and t.amount > 0 %}pos{% else %}neg{% endif %}">{{ t.amount | money }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

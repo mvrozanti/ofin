@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}documents{% endblock %}
+{% block body %}
+<section class="cards">
+  <div class="card big">
+    <div class="lbl">documents parsed</div>
+    <div class="val">{{ total }}</div>
+  </div>
+  <div class="card">
+    <div class="lbl">errors</div>
+    <div class="val neg">{{ errors }}</div>
+  </div>
+  <div class="card">
+    <div class="lbl">warnings</div>
+    <div class="val">{{ warnings }}</div>
+  </div>
+</section>
+
+<div class="toolbar">
+  <label>type
+    <select onchange="window.location.href='/documents?type=' + this.value">
+      <option value="" {% if not type_filter %}selected{% endif %}>all</option>
+      <option value="extrato" {% if type_filter == 'extrato' %}selected{% endif %}>extrato</option>
+      <option value="fatura" {% if type_filter == 'fatura' %}selected{% endif %}>fatura</option>
+    </select>
+  </label>
+  <label>status
+    <select onchange="window.location.href='/documents?status=' + this.value">
+      <option value="" {% if not status_filter %}selected{% endif %}>all</option>
+      <option value="error" {% if status_filter == 'error' %}selected{% endif %}>errors only</option>
+      <option value="warn" {% if status_filter == 'warn' %}selected{% endif %}>warnings only</option>
+      <option value="ok" {% if status_filter == 'ok' %}selected{% endif %}>clean</option>
+    </select>
+  </label>
+</div>
+
+<table class="grid">
+  <thead>
+    <tr>
+      <th>type</th>
+      <th>period</th>
+      <th>account</th>
+      <th class="r">totals</th>
+      <th>status</th>
+      <th>file</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for d in docs %}
+    <tr>
+      <td>{{ d.document_type }}</td>
+      <td class="mono">{{ "%04d-%02d"|format(d.period_year or 0, d.period_month or 0) }}</td>
+      <td class="muted">{{ d.account_id or '—' }}</td>
+      <td class="r mono">{{ d.totals }}</td>
+      <td>
+        {% if d.errors > 0 %}<span class="badge err">{{ d.errors }} err</span>{% endif %}
+        {% if d.warnings > 0 %}<span class="badge warn">{{ d.warnings }} warn</span>{% endif %}
+        {% if d.errors == 0 and d.warnings == 0 %}<span class="badge ok">ok</span>{% endif %}
+      </td>
+      <td><a href="/documents/{{ d.id }}">{{ d.filename }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

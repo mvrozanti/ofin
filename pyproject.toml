@@ -1,0 +1,31 @@
+[project]
+name = "ofin"
+version = "0.1.0"
+description = "Brazilian personal finance dashboard backed by Pluggy"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.115.5",
+  "uvicorn[standard]==0.32.1",
+  "httpx==0.27.2",
+  "sqlalchemy[asyncio]==2.0.36",
+  "asyncpg==0.30.0",
+  "pydantic==2.9.2",
+  "pydantic-settings==2.6.1",
+  "jinja2==3.1.4",
+  "apscheduler==3.10.4",
+  "python-multipart==0.0.18",
+  "structlog==24.4.0",
+  "pdfplumber==0.11.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ofin"]

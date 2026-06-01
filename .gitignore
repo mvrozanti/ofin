@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+.env.local
+.ofin-parse-report.json
+.ofin-pgdata/
+*.egg-info/
+build/
+dist/
+tests/fixtures/*.pdf
