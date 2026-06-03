@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     timezone: str = "America/Sao_Paulo"
     log_level: str = "info"
     upload_dir: str = "/var/lib/ofin/uploads"
+    read_only: bool = False
+    authelia_url: str = "http://authelia:9091"
+    authelia_verify_path: str = "/api/authz/forward-auth"
+    forwarded_host: str = "ofin.mvr.ac"
+    auth_cache_ttl: int = 30
+    auth_portal: str = "https://auth.mvr.ac"
 
 
 @lru_cache
