@@ -11,8 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
+COPY tests ./tests
+COPY scripts ./scripts
 
-RUN pip install --upgrade pip && pip install .
+RUN pip install --upgrade pip && pip install ".[dev]"
 
 EXPOSE 8080
 
