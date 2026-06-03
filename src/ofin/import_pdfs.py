@@ -298,6 +298,8 @@ async def _fatura_to_tx_rows(s_db: AsyncSession, doc_id: str, account_id: str, r
             "city": t.city,
             "is_international": t.is_international,
         }
+        if t.amount_brl < 0:
+            cc_meta["kind"] = "refund"
         if t.fx_original_value is not None:
             cc_meta["fx"] = {
                 "original_value": str(t.fx_original_value),
