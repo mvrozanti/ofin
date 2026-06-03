@@ -9,8 +9,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..db import session_dep
-from ..models import Account, CategoryRule, Transaction
+from ..models import Account, CategoryRule, Transaction, TransactionOverride
 from ..parsers.categorize_engine import bump_cache, classify_tx
 from ..parsers.common import strip_accents
 
@@ -18,6 +19,11 @@ router = APIRouter(tags=["rules"])
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.globals["read_only"] = settings().read_only
+
+from ..template_filters import register as _register_filters  # noqa: E402
+
+_register_filters(templates)
 
 
 @router.get("/rules", response_class=HTMLResponse)
@@ -145,8 +151,17 @@ async def rules_edit(
 
 
 @router.post("/recategorize", response_class=HTMLResponse)
-async def recategorize_all(request: Request, s: AsyncSession = Depends(session_dep)):
+async def recategorize_all(
+    request: Request,
+    s: AsyncSession = Depends(session_dep),
+    force: int = 0,
+):
     bump_cache()
+    overrides = set()
+    if not force:
+        overrides = set(
+            (await s.execute(select(TransactionOverride.tx_id))).scalars().all()
+        )
     rows = (
         await s.execute(
             select(Transaction, Account.type)
@@ -154,7 +169,11 @@ async def recategorize_all(request: Request, s: AsyncSession = Depends(session_d
         )
     ).all()
     updated = 0
+    skipped = 0
     for tx, acct_type in rows:
+        if tx.id in overrides:
+            skipped += 1
+            continue
         sign = "credit" if (tx.amount or 0) > 0 else "debit"
         is_intl = False
         hint = None
@@ -188,5 +207,6 @@ async def recategorize_all(request: Request, s: AsyncSession = Depends(session_d
             "mega_filter": None,
             "search": "",
             "recategorized": updated,
+            "skipped_overrides": skipped,
         },
     )

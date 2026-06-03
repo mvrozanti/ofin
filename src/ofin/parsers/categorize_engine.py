@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import CategoryRule
+from ..models import CategoryRule, TransactionOverride
 from .categorize import classify_extrato, classify_fatura
 from .common import strip_accents
 
@@ -92,10 +92,21 @@ async def classify_tx(
     sign: str,
     is_international: bool = False,
     fatura_category_hint: str | None = None,
+    tx_id: str | None = None,
 ) -> tuple[str, str, bool, int | None]:
-    """Returns (mega, category, is_internal, rule_id)."""
+    """Returns (mega, category, is_internal, rule_id). tx_id triggers override lookup."""
     if _loaded_version != _cache_version:
         await _reload(s)
+
+    if tx_id:
+        ov = await s.get(TransactionOverride, tx_id)
+        if ov and (ov.mega or ov.category):
+            return (
+                ov.mega or "outros",
+                ov.category or "outros",
+                bool(ov.is_internal) if ov.is_internal is not None else False,
+                None,
+            )
 
     desc = description or ""
     desc_norm = _norm(desc)
