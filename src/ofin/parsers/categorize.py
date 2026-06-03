@@ -5,8 +5,8 @@ import re
 from .common import strip_accents
 
 
-def _norm(s: str) -> str:
-    return strip_accents(s).strip().lower()
+def _norm(s: str | None) -> str:
+    return strip_accents(s or "").strip().lower()
 
 
 SELF_NAME_TOKENS = ("marcelo", "vironda", "rozanti")
