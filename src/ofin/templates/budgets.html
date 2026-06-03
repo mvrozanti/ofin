@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}orçamentos{% endblock %}
+{% block body %}
+
+<h2>orçamentos do mês atual</h2>
+<p class="muted">orçamentos calculados sobre gastos do mês corrente, respeitando filtros de conta. categoria vazia = orçamento total do mega.</p>
+
+{% if progress %}
+<div class="cards">
+  {% for p in progress %}
+    <div class="gauge {{ p.status }}" data-drill="/transactions" data-filter='{"megas": ["{{ p.mega }}"]{% if p.category %}, "categories": ["{{ p.category }}"]{% endif %}, "preset": "mtd"}'>
+      <div class="gauge-head">
+        <span class="gauge-name">{{ p.mega }}{% if p.category %} · {{ p.category }}{% endif %}</span>
+        <span class="gauge-amt mono">{{ p.spent | money }} / {{ p.target | money }} {{ p.currency }}</span>
+      </div>
+      <div class="bar"><div style="width: {{ ((p.pct * 100) if p.pct < 1 else 100) | round(1) }}%"></div></div>
+      <div class="foot">
+        <span>{{ '%.0f%%' % (p.pct * 100) }}</span>
+        <span class="{{ 'neg' if p.remaining < 0 else 'muted' }}">{{ p.remaining | money }} restante</span>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>todos os orçamentos</h2>
+<div class="tbl-wrap"><table class="grid">
+  <thead><tr>
+    <th>mega</th><th>categoria</th><th class="r">valor</th><th>moeda</th><th>periodicidade</th><th>estado</th><th>ações</th>
+  </tr></thead>
+  <tbody>
+  {% for b in budgets %}
+    <tr>
+      <td>{{ b.mega }}</td>
+      <td>{{ b.category or '—' }}</td>
+      <td class="r mono">{{ b.amount | money }}</td>
+      <td class="muted">{{ b.currency_code }}</td>
+      <td class="muted">{{ b.period }}</td>
+      <td>{% if b.enabled %}<span class="badge ok">ativo</span>{% else %}<span class="badge warn">desativado</span>{% endif %}</td>
+      <td>
+        <form method="post" action="/budgets/{{ b.id }}/toggle" style="display:inline"><button class="btn ghost small">{{ 'desativar' if b.enabled else 'ativar' }}</button></form>
+        <form method="post" action="/budgets/{{ b.id }}/delete" style="display:inline" onsubmit="return confirm('apagar?')"><button class="btn danger small">excluir</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  {% if not budgets %}
+    <tr><td colspan="7" class="muted">nenhum orçamento. crie um abaixo.</td></tr>
+  {% endif %}
+  </tbody>
+</table></div>
+
+<h2>novo orçamento</h2>
+<form method="post" action="/budgets" class="rules-form">
+  <label>mega
+    <input name="mega" required placeholder="alimentacao">
+  </label>
+  <label>categoria <small class="muted">(opcional)</small>
+    <input name="category" placeholder="ifood">
+  </label>
+  <label>valor
+    <input name="amount" required placeholder="2000.00">
+  </label>
+  <label>moeda
+    <select name="currency_code">
+      <option value="BRL">BRL</option>
+      <option value="USD">USD</option>
+      <option value="EUR">EUR</option>
+    </select>
+  </label>
+  <label>periodicidade
+    <select name="period">
+      <option value="monthly">mensal</option>
+      <option value="annual">anual</option>
+    </select>
+  </label>
+  <label style="grid-column: span 2">notas
+    <input name="notes" placeholder="opcional">
+  </label>
+  <button type="submit" class="btn">criar</button>
+</form>
+{% endblock %}

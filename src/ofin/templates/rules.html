@@ -2,9 +2,10 @@
 {% block title %}rules{% endblock %}
 {% block body %}
 
-{% if recategorized %}
+{% if recategorized is defined and recategorized %}
 <div class="panel" style="border-color: rgba(74,222,128,0.4)">
   <b class="pos">recategorizado:</b> {{ recategorized }} transações reclassificadas.
+  {% if skipped_overrides %}<span class="muted">· {{ skipped_overrides }} preservadas por overrides manuais</span>{% endif %}
 </div>
 {% endif %}
 
@@ -86,14 +87,14 @@
     <tr style="{% if not r.enabled %}opacity:0.5{% endif %}">
       <td class="r mono muted">{{ r.priority }}</td>
       <td class="muted">{{ r.pattern_type }}</td>
-      <td class="mono">{{ r.pattern }}</td>
+      <td class="mono">{{ r.pattern | mask_text }}</td>
       <td class="muted">{{ r.account_type or '*' }}</td>
       <td class="muted">{{ r.sign or '*' }}</td>
       <td>{{ r.mega }}</td>
-      <td class="muted">{{ r.category }}</td>
+      <td class="muted">{{ mask_pessoa(r.mega, r.category) }}</td>
       <td class="r mono">
         {% set n = match_map.get(r.id, 0) %}
-        {% if n > 0 %}<a href="/transactions?rule={{ r.id }}">{{ n }}</a>{% else %}—{% endif %}
+        {% if n > 0 %}<a href="/transactions?rule={{ r.id }}&preset=all">{{ n }}</a>{% else %}—{% endif %}
       </td>
       <td>
         {% if r.is_internal %}<span class="badge info">internal</span>{% endif %}

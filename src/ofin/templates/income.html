@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}renda{% endblock %}
+{% block body %}
+
+<section class="kpi-row">
+  <div class="kpi">
+    <div class="lbl">renda total · {{ filter.label() }}</div>
+    <div class="val mono pos">{{ total | money }}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">fontes</div>
+    <div class="val">{{ mix | length }}</div>
+  </div>
+</section>
+
+<h2>composição da renda</h2>
+<div class="tbl-wrap"><table class="grid">
+  <thead><tr><th>mega</th><th>categoria</th><th class="r">total</th><th class="r">%</th><th class="r">n tx</th></tr></thead>
+  <tbody>
+  {% for m in mix %}
+    <tr data-drill="/transactions" data-filter='{"megas": ["{{ m.mega }}"], "categories": ["{{ m.category }}"]}'>
+      <td>{{ m.mega }}</td>
+      <td>{{ mask_pessoa(m.mega, m.category) }}</td>
+      <td class="r mono pos">{{ m.total | money }}</td>
+      <td class="r mono">{{ '%.1f%%' % (m.pct * 100) }}</td>
+      <td class="r mono muted">{{ m.n }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

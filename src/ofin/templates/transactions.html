@@ -1,21 +1,60 @@
 {% extends "base.html" %}
-{% block title %}transactions{% endblock %}
+{% block title %}transações{% endblock %}
 {% block body %}
-<section>
-  <h2>transactions · last {{ limit }}</h2>
+<section x-data="ofinBulkSelect()" x-init="$nextTick(() => {})">
+  <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px;">
+    <h2>transações · {{ total }} encontradas <span class="muted">({{ filter.label() }})</span></h2>
+    <div>
+      <a class="btn ghost small" href="/transactions.csv?{{ request.url.query }}">↓ CSV</a>
+      <span class="muted small">página {{ (offset // limit) + 1 }} de {{ ((total - 1) // limit) + 1 if total else 1 }}</span>
+    </div>
+  </div>
+
   <div class="tbl-wrap"><table class="grid">
-    <thead><tr><th>date</th><th>description</th><th>category</th><th>type</th><th class="r">amount</th></tr></thead>
+    <thead><tr>
+      <th style="width:36px;"><input type="checkbox" @click="toggleAll([{% for t in transactions %}'{{ t.id }}'{% if not loop.last %},{% endif %}{% endfor %}])"></th>
+      <th>data</th>
+      <th>conta</th>
+      <th>descrição</th>
+      <th>mega</th>
+      <th>categoria</th>
+      <th class="r">valor</th>
+      <th>regra</th>
+    </tr></thead>
     <tbody>
     {% for t in transactions %}
-      <tr>
-        <td>{{ t.date }}</td>
-        <td>{{ t.description or t.description_raw or '—' }}</td>
-        <td>{{ t.category or '—' }}</td>
-        <td>{{ t.type or '—' }}</td>
-        <td class="r {% if t.amount and t.amount > 0 %}pos{% else %}neg{% endif %}">{{ t.amount | money }}</td>
+      <tr data-tx-id="{{ t.id }}">
+        <td @click.stop><input type="checkbox" :checked="has('{{ t.id }}')" @change="toggle('{{ t.id }}')"></td>
+        <td class="mono">{{ t.date }}</td>
+        <td class="muted small">{{ t.account_id[:8] }}…</td>
+        <td>{{ (t.description or t.description_raw) | mask_text }}</td>
+        <td>
+          {% if t.mega %}<span class="badge info">{{ t.mega }}</span>{% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{{ mask_pessoa(t.mega, t.category or '—') }}</td>
+        <td class="r mono {% if t.amount and t.amount > 0 %}pos{% else %}neg{% endif %}">{{ t.amount | money }}</td>
+        <td class="muted small">
+          {% if t.id in overrides %}<span class="badge warn">override</span>
+          {% elif t.rule_id %}#{{ t.rule_id }}
+          {% else %}<span class="muted">fallback</span>{% endif %}
+        </td>
       </tr>
     {% endfor %}
     </tbody>
   </table></div>
+
+  <div class="bulk-bar" x-show="count() > 0" x-cloak>
+    <span class="count" x-text="count() + ' selecionadas'"></span>
+    <input type="text" placeholder="mega" x-model="bulkMega" list="megas-dl">
+    <input type="text" placeholder="categoria" x-model="bulkCategory">
+    <label class="radio"><input type="checkbox" x-model="bulkInternal"> interno</label>
+    <button class="btn" @click="apply()">aplicar a todas</button>
+    <button class="btn ghost" @click="selected = new Set()">limpar seleção</button>
+  </div>
+
+  <div style="margin-top: 14px; display:flex; gap:10px;">
+    {% if prev_url %}<a class="btn ghost" href="?{{ prev_url }}">← anterior</a>{% endif %}
+    {% if next_url %}<a class="btn ghost" href="?{{ next_url }}">próxima →</a>{% endif %}
+  </div>
 </section>
 {% endblock %}

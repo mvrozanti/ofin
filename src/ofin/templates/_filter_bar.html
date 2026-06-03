@@ -1,0 +1,91 @@
+<section class="filterbar" x-show="filterOpen" x-cloak x-transition.duration.150ms>
+  <form class="filterbar-form" method="get" @submit.prevent="applyFilters">
+    <div class="fb-group">
+      <label class="fb-label">período</label>
+      <div class="fb-presets">
+        <template x-for="p in presets" :key="p.k">
+          <button type="button"
+                  class="chip"
+                  :class="{ active: filters.preset === p.k }"
+                  @click="setPreset(p.k)"
+                  x-text="p.label"></button>
+        </template>
+      </div>
+      <div class="fb-range" x-show="filters.preset === 'custom'">
+        <input type="date" x-model="filters.from" name="from">
+        <span>→</span>
+        <input type="date" x-model="filters.to" name="to">
+      </div>
+    </div>
+
+    <div class="fb-group">
+      <label class="fb-label">contas</label>
+      <div class="fb-multi" x-data>
+        <template x-for="opt in accounts" :key="opt.id">
+          <button type="button"
+                  class="chip"
+                  :class="{ active: filters.accounts.includes(opt.id) }"
+                  @click="toggle('accounts', opt.id)"
+                  x-text="opt.label"></button>
+        </template>
+      </div>
+    </div>
+
+    <div class="fb-group">
+      <label class="fb-label">megas</label>
+      <div class="fb-multi">
+        <template x-for="m in megas" :key="m">
+          <button type="button"
+                  class="chip"
+                  :class="{ active: filters.megas.includes(m) }"
+                  @click="toggle('megas', m)"
+                  x-text="m"></button>
+        </template>
+      </div>
+    </div>
+
+    <div class="fb-group fb-row">
+      <label class="fb-inline">
+        <span class="fb-label">comparar</span>
+        <select x-model="filters.compare">
+          <option value="none">—</option>
+          <option value="prev">período anterior</option>
+          <option value="yoy">mesmo período ano anterior</option>
+        </select>
+      </label>
+      <label class="fb-inline">
+        <span class="fb-label">moeda</span>
+        <select x-model="filters.display_currency">
+          <option value="BRL">BRL</option>
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+        </select>
+      </label>
+      <label class="fb-inline">
+        <span class="fb-label">busca</span>
+        <input type="search" x-model="filters.q" placeholder="descrição…" x-ref="searchInput">
+      </label>
+      <label class="fb-inline checkbox">
+        <input type="checkbox" x-model="filters.include_internal">
+        <span>incluir internos</span>
+      </label>
+      <label class="fb-inline checkbox">
+        <input type="checkbox" x-model="filters.include_sweep">
+        <span>incluir sweep</span>
+      </label>
+    </div>
+
+    <div class="fb-actions">
+      <select x-model="selectedView" @change="loadView($event.target.value)" class="chip">
+        <option value="">visões salvas…</option>
+        <template x-for="v in savedViews" :key="v.name">
+          <option :value="v.name" x-text="v.name"></option>
+        </template>
+      </select>
+      <button type="button" class="btn ghost" @click="saveCurrentView()">salvar visão</button>
+      <button type="button" class="btn ghost" x-show="selectedView" @click="deleteView(selectedView)">apagar</button>
+      <button type="button" class="btn ghost" @click="clearFilters">limpar</button>
+      <button type="submit" class="btn">aplicar</button>
+    </div>
+  </form>
+</section>

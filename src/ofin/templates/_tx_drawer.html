@@ -1,0 +1,127 @@
+<aside class="tx-drawer" :class="{ open: drawerOpen }" x-show="drawerOpen" @click.self="closeDrawer" x-cloak>
+  <div class="tx-drawer-panel" @click.stop>
+    <header class="tx-drawer-head">
+      <h3>categorizar transação</h3>
+      <button class="iconbtn" @click="closeDrawer" aria-label="fechar">✕</button>
+    </header>
+
+    <template x-if="drawerLoading">
+      <div class="tx-loading">carregando…</div>
+    </template>
+
+    <template x-if="drawerTx">
+      <div class="tx-drawer-body">
+        <section class="tx-meta">
+          <div class="tx-meta-row">
+            <span class="k">data</span>
+            <span class="v" x-text="drawerTx.date"></span>
+          </div>
+          <div class="tx-meta-row">
+            <span class="k">valor</span>
+            <span class="v" :class="parseFloat(drawerTx.amount) >= 0 ? 'pos' : 'neg'"
+                  x-text="moneyFmt(drawerTx.amount, drawerTx.currency || filters.display_currency)"></span>
+          </div>
+          <div class="tx-meta-row">
+            <span class="k">descrição</span>
+            <span class="v mono" x-text="drawerTx.description || '—'"></span>
+          </div>
+          <div class="tx-meta-row" x-show="drawerTx.description_raw && drawerTx.description_raw !== drawerTx.description">
+            <span class="k">raw</span>
+            <span class="v mono small" x-text="drawerTx.description_raw"></span>
+          </div>
+          <div class="tx-meta-row" x-show="drawerTx.fx && drawerTx.fx.currency">
+            <span class="k">câmbio</span>
+            <span class="v mono">
+              <span x-text="drawerTx.fx?.original_value + ' ' + drawerTx.fx?.currency"></span>
+              <span class="muted" x-text="' @ ' + drawerTx.fx?.rate"></span>
+            </span>
+          </div>
+        </section>
+
+        <section class="tx-rule">
+          <h4>regra atual</h4>
+          <template x-if="drawerRule">
+            <div class="rulebox">
+              <div><span class="muted">padrão:</span> <code x-text="drawerRule.pattern_type + ': ' + drawerRule.pattern"></code></div>
+              <div><span class="muted">classifica como:</span> <span class="badge info" x-text="drawerRule.mega + ' / ' + drawerRule.category"></span></div>
+              <a class="muted small" :href="'/rules?search=' + encodeURIComponent(drawerRule.pattern)">editar regra →</a>
+            </div>
+          </template>
+          <template x-if="!drawerRule && drawerOverride">
+            <div class="rulebox warn">
+              <div class="muted">sem regra — categoria definida manualmente</div>
+              <div><span class="badge warn" x-text="(drawerOverride.mega || '—') + ' / ' + (drawerOverride.category || '—')"></span></div>
+              <button type="button" class="btn ghost small" @click="clearOverride">limpar override</button>
+            </div>
+          </template>
+          <template x-if="!drawerRule && !drawerOverride">
+            <div class="rulebox warn">
+              <div class="muted">sem regra correspondente — usando fallback hardcoded</div>
+            </div>
+          </template>
+        </section>
+
+        <section class="tx-edit">
+          <h4>nova categorização</h4>
+          <div class="fb-row">
+            <label class="fb-inline">
+              <span class="fb-label">mega</span>
+              <input type="text" list="megas-dl" x-model="drawerForm.mega">
+            </label>
+            <label class="fb-inline">
+              <span class="fb-label">categoria</span>
+              <input type="text" x-model="drawerForm.category">
+            </label>
+            <label class="fb-inline checkbox">
+              <input type="checkbox" x-model="drawerForm.is_internal">
+              <span>marcar como interno</span>
+            </label>
+          </div>
+          <datalist id="megas-dl">
+            <template x-for="m in megas" :key="m"><option :value="m"></option></template>
+          </datalist>
+
+          <div class="fb-row tx-mode">
+            <label class="radio">
+              <input type="radio" value="once" x-model="drawerForm.mode">
+              <span>apenas esta transação</span>
+            </label>
+            <label class="radio">
+              <input type="radio" value="rule" x-model="drawerForm.mode">
+              <span>criar regra para todas que combinem</span>
+            </label>
+          </div>
+
+          <div class="rule-builder" x-show="drawerForm.mode === 'rule'">
+            <label class="fb-inline">
+              <span class="fb-label">tipo</span>
+              <select x-model="drawerForm.pattern_type">
+                <option value="contains">contains</option>
+                <option value="startswith">startswith</option>
+                <option value="exact">exact</option>
+                <option value="regex">regex</option>
+              </select>
+            </label>
+            <label class="fb-inline grow">
+              <span class="fb-label">padrão</span>
+              <input type="text" x-model="drawerForm.pattern" :placeholder="(drawerTx.description || '').toLowerCase()">
+            </label>
+            <label class="fb-inline">
+              <span class="fb-label">prioridade</span>
+              <input type="number" min="1" max="100" x-model.number="drawerForm.priority">
+            </label>
+          </div>
+
+          <textarea class="tx-note" x-model="drawerForm.note" placeholder="nota opcional…" rows="2"></textarea>
+
+          <div class="tx-actions">
+            <button type="button" class="btn ghost" @click="closeDrawer">cancelar</button>
+            <button type="button" class="btn" @click="submitDrawer">
+              <span x-text="drawerForm.mode === 'rule' ? 'criar regra + aplicar' : 'salvar override'"></span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </template>
+  </div>
+</aside>

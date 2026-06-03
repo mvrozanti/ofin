@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}metas{% endblock %}
+{% block body %}
+
+<section class="kpi-row">
+  <div class="kpi">
+    <div class="lbl">patrimônio atual</div>
+    <div class="val mono">{{ current_nw | money }}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">crescimento mensal médio</div>
+    <div class="val mono">{% if monthly_growth %}{{ monthly_growth | money }}{% else %}—{% endif %}</div>
+    <div class="sub muted">média histórica baseado em extratos</div>
+  </div>
+</section>
+
+<h2>metas</h2>
+{% if goals %}
+<div class="cards">
+  {% for g in goals %}
+    <div class="gauge {{ 'ok' if g.progress >= 1.0 else ('warn' if g.progress >= 0.5 else 'over') if false else ('ok' if g.progress >= 0.5 else 'warn') }}">
+      <div class="gauge-head">
+        <span class="gauge-name">{{ g.goal.name }}</span>
+        <span class="gauge-amt mono">{{ current_nw | money }} / {{ g.goal.target_amount | money }}</span>
+      </div>
+      <div class="bar"><div style="width: {{ ((g.progress * 100) if g.progress < 1 else 100) | round(1) }}%"></div></div>
+      <div class="foot">
+        <span>{{ '%.1f%%' % (g.progress * 100) }}</span>
+        <span class="muted">
+          {% if g.eta %}ETA {{ g.eta }}{% elif g.progress >= 1 %}meta atingida ✓{% else %}sem ETA{% endif %}
+          {% if g.goal.target_date %} · alvo {{ g.goal.target_date }}{% endif %}
+        </span>
+      </div>
+      <form method="post" action="/goals/{{ g.goal.id }}/delete" style="margin-top:8px">
+        <button class="btn ghost small" onclick="return confirm('apagar?')">apagar</button>
+      </form>
+    </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">nenhuma meta. crie abaixo.</p>
+{% endif %}
+
+<h2>nova meta</h2>
+<form method="post" action="/goals" class="rules-form">
+  <label>nome
+    <input name="name" required placeholder="reserva de emergência 12m">
+  </label>
+  <label>valor alvo
+    <input name="target_amount" required placeholder="100000">
+  </label>
+  <label>moeda
+    <select name="currency_code">
+      <option value="BRL">BRL</option>
+      <option value="USD">USD</option>
+      <option value="EUR">EUR</option>
+    </select>
+  </label>
+  <label>data alvo
+    <input name="target_date" type="date">
+  </label>
+  <label>tipo
+    <select name="kind">
+      <option value="net_worth">patrimônio</option>
+      <option value="savings">poupança</option>
+      <option value="custom">custom</option>
+    </select>
+  </label>
+  <label style="grid-column: span 3">notas
+    <input name="notes">
+  </label>
+  <button class="btn" type="submit">criar</button>
+</form>
+{% endblock %}

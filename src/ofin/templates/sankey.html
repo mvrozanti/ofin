@@ -1,39 +1,104 @@
 {% extends "base.html" %}
 {% block title %}sankey{% endblock %}
 {% block body %}
-<div class="toolbar">
-  <label>período
-    <select onchange="window.location.href='/sankey?months=' + this.value">
-      <option value="3"  {% if months == 3 %}selected{% endif %}>últimos 3 meses</option>
-      <option value="6"  {% if months == 6 %}selected{% endif %}>últimos 6 meses</option>
-      <option value="12" {% if months == 12 %}selected{% endif %}>últimos 12 meses</option>
-      <option value="24" {% if months == 24 %}selected{% endif %}>últimos 24 meses</option>
-      <option value="0"  {% if months == 0 %}selected{% endif %}>tudo</option>
-    </select>
-  </label>
-  <span class="muted">{{ since.isoformat() }} → {{ until.isoformat() }}</span>
-  <span class="muted">total income <b class="pos">{{ total_income | money }}</b> · spend <b class="neg">{{ total_spend | money }}</b> · net <b class="{% if net >= 0 %}pos{% else %}neg{% endif %}">{{ net | money }}</b></span>
+<section class="kpi-row">
+  <div class="kpi">
+    <div class="lbl">income · {{ filter.label() }}</div>
+    <div class="val mono pos">{{ total_income | money }}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">spend</div>
+    <div class="val mono neg">{{ total_spend | money }}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">net</div>
+    <div class="val mono {{ 'pos' if net >= 0 else 'neg' }}">{{ net | money }}</div>
+  </div>
+</section>
+
+{% if months_axis %}
+<div class="range-slider"
+     x-data='sankeyRange({{ months_axis | tojson }}, {{ ("\"" ~ filter.date_from.isoformat() ~ "\"") if filter.date_from else "null" }}, {{ ("\"" ~ filter.date_to.isoformat() ~ "\"") if filter.date_to else "null" }})'
+     x-init="init()">
+  <div class="rs-head">
+    <div class="rs-controls">
+      <button type="button" class="iconbtn" @click="togglePlay()" :title="playing ? 'pausar' : 'tocar'">
+        <span x-show="!playing">▶</span><span x-show="playing" x-cloak>⏸</span>
+      </button>
+      <button type="button" class="iconbtn" @click="step(-1)" title="−1 mês">⏮</button>
+      <button type="button" class="iconbtn" @click="step(1)" title="+1 mês">⏭</button>
+      <label class="rs-speed">
+        velocidade
+        <select x-model.number="intervalMs" :disabled="playing">
+          <option :value="1500">lenta</option>
+          <option :value="800">média</option>
+          <option :value="350">rápida</option>
+          <option :value="120">turbo</option>
+        </select>
+      </label>
+      <label class="rs-mode">
+        modo
+        <select x-model="mode" :disabled="playing">
+          <option value="window">janela móvel</option>
+          <option value="expand">expansão cumulativa</option>
+        </select>
+      </label>
+      <label class="rs-loop"><input type="checkbox" x-model="loop"> loop</label>
+    </div>
+    <span class="mono rs-period" x-text="months[lo] + ' → ' + months[hi]"></span>
+  </div>
+  <div class="rs-track"
+       :class="{ dragging }"
+       x-ref="track"
+       @pointerdown="trackPointerDown($event)"
+       @pointermove="trackPointerMove($event)"
+       @pointerup="trackPointerUp($event)"
+       @pointercancel="trackPointerUp($event)">
+    <div class="rs-fill" :style="`left: ${(lo / (months.length - 1)) * 100}%; right: ${(1 - hi / (months.length - 1)) * 100}%`"></div>
+    <input type="range" :min="0" :max="months.length - 1" step="1" x-model.number="lo" @change="commitDeferred()" @input="clampLo(); liveRefresh()">
+    <input type="range" :min="0" :max="months.length - 1" step="1" x-model.number="hi" @change="commitDeferred()" @input="clampHi(); liveRefresh()">
+  </div>
+  <div class="rs-ticks">
+    <template x-for="(m, i) in months" :key="m">
+      <span class="rs-tick" :class="{ inrange: i >= lo && i <= hi }" x-show="i === 0 || i === months.length - 1 || i % Math.max(1, Math.floor(months.length / 12)) === 0" x-text="m"></span>
+    </template>
+  </div>
+  <div class="rs-stats muted" x-show="liveTotals" x-cloak>
+    income <b class="pos mono" x-text="fmt(liveTotals?.income)"></b> ·
+    spend <b class="neg mono" x-text="fmt(liveTotals?.spend)"></b> ·
+    net <b class="mono" :class="(liveTotals?.net || 0) >= 0 ? 'pos' : 'neg'" x-text="fmt(liveTotals?.net)"></b>
+  </div>
 </div>
+{% endif %}
 
 <div id="sankey" class="panel chart" style="height: clamp(420px, 80vh, 820px); padding: 0;"></div>
+<div class="legend">
+  <span class="muted">clique num nó/aresta para drill-down nas transações</span>
+</div>
 
 <h2>income (real, excl interno/sweep)</h2>
 <div class="tbl-wrap"><table class="grid">
   <thead><tr><th>categoria</th><th class="r">total</th><th class="r">% income</th></tr></thead>
   <tbody>
   {% for c in income_cats %}
-    <tr><td>{{ c.name }}</td><td class="r mono pos">{{ c.value | money }}</td><td class="r mono muted">{{ '%.1f%%' | format(c.pct * 100) }}</td></tr>
+    <tr data-drill="/transactions" data-filter='{"megas": ["{{ c.mega }}"], "categories": ["{{ c.category }}"]}'>
+      <td>{{ c.name }}</td>
+      <td class="r mono pos">{{ c.value | money }}</td>
+      <td class="r mono muted">{{ '%.1f%%' | format(c.pct * 100) }}</td>
+    </tr>
   {% endfor %}
   </tbody>
 </table></div>
 
 <h2>spend por categoria</h2>
 <div class="tbl-wrap"><table class="grid">
-  <thead><tr><th>categoria</th><th class="r">total</th><th class="r">% spend</th><th class="r">% income</th></tr></thead>
+  <thead><tr><th>mega</th><th>categoria</th><th>origem</th><th class="r">total</th><th class="r">% spend</th><th class="r">% income</th></tr></thead>
   <tbody>
   {% for c in spend_cats %}
-    <tr>
-      <td>{{ c.name }}</td>
+    <tr data-drill="/transactions" data-filter='{"megas": ["{{ c.mega }}"], "categories": ["{{ c.category }}"], "account_types": ["{{ "BANK" if c.src == "cc" else "CREDIT" }}"]}'>
+      <td>{{ c.mega }}</td>
+      <td>{{ mask_pessoa(c.mega, c.category) }}</td>
+      <td class="muted">{{ c.src }}</td>
       <td class="r mono neg">{{ c.value | money }}</td>
       <td class="r mono muted">{{ '%.1f%%' | format(c.pct_spend * 100) }}</td>
       <td class="r mono muted">{{ '%.1f%%' | format(c.pct_income * 100) }}</td>
@@ -48,18 +113,25 @@
   const data = {{ sankey_json | safe }};
   const option = {
     backgroundColor: 'transparent',
+    animation: false,
+    animationDurationUpdate: 0,
     tooltip: {
       trigger: 'item',
       triggerOn: 'mousemove',
       formatter: function (params) {
+        const fmt = (v) => window.OFIN_AUTHED
+          ? 'R$ ' + Number(v || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+          : Number(v || 0).toFixed(2) + '%';
         if (params.dataType === 'edge') {
-          return params.data.source + ' → ' + params.data.target + ': <b>R$ ' + Number(params.data.value).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</b>';
+          const v = params.value ?? params.data.value;
+          return params.data.source + ' → ' + params.data.target + ': <b>' + fmt(v) + '</b>';
         }
-        const total = Number(params.data.value || 0);
-        return params.data.name + ': <b>R$ ' + total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</b>';
+        const v = params.value ?? params.data.value;
+        return params.data.name + ': <b>' + fmt(v) + '</b>';
       },
     },
     series: [{
+      id: 'sankey',
       type: 'sankey',
       data: data.nodes,
       links: data.links,
@@ -70,10 +142,227 @@
       lineStyle: { color: 'gradient', curveness: 0.5, opacity: 0.4 },
       nodeWidth: window.innerWidth < 700 ? 8 : 14,
       nodeGap: window.innerWidth < 700 ? 6 : 10,
-      layoutIterations: 64,
+      layoutIterations: 32,
+      animation: false,
     }],
   };
   chart.setOption(option);
+
+  function megaFromNode(name) {
+    if (!name) return null;
+    const m = name.match(/^(?:in|out|sub|csub|card|renda):([^/]+)/);
+    return m ? m[1] : null;
+  }
+  function catFromNode(name) {
+    const m = name && name.match(/^(?:in|sub|csub):[^/]+\/(.+)$/);
+    return m ? m[1] : null;
+  }
+
+  function monthEnd(yyyymm) {
+    const [y, m] = yyyymm.split('-').map(Number);
+    return new Date(y, m, 0).getDate();
+  }
+  function brl(n) {
+    return 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  window.sankeyRange = function (months, fromIso, toIso) {
+    return {
+      months,
+      lo: 0, hi: months.length - 1,
+      playing: false,
+      intervalMs: 800,
+      mode: 'window',
+      loop: true,
+      windowSize: 0,
+      timer: null,
+      debounceTimer: null,
+      fetchSeq: 0,
+      liveTotals: null,
+      pendingCommit: false,
+      dragging: false,
+      dragStart: null,
+
+      init() {
+        if (fromIso) {
+          const i = months.indexOf(fromIso.slice(0, 7));
+          if (i >= 0) this.lo = i;
+        }
+        if (toIso) {
+          const i = months.indexOf(toIso.slice(0, 7));
+          if (i >= 0) this.hi = i;
+        }
+        if (this.hi < this.lo) this.hi = this.lo;
+      },
+
+      clampLo() { if (this.lo > this.hi) this.hi = this.lo; },
+      clampHi() { if (this.hi < this.lo) this.lo = this.hi; },
+
+      fmt(v) {
+        if (v === null || v === undefined) return window.OFIN_AUTHED ? brl(0) : '•••';
+        if (!window.OFIN_AUTHED) return Number(v).toFixed(2) + '%';
+        return brl(v);
+      },
+
+      buildQS() {
+        const params = new URLSearchParams(location.search);
+        params.set('preset', 'custom');
+        params.set('from', this.months[this.lo] + '-01');
+        params.set('to', this.months[this.hi] + '-' + String(monthEnd(this.months[this.hi])).padStart(2, '0'));
+        params.delete('months');
+        return params.toString();
+      },
+
+      async refresh() {
+        const seq = ++this.fetchSeq;
+        try {
+          const res = await fetch('/api/sankey?' + this.buildQS());
+          if (!res.ok || seq !== this.fetchSeq) return;
+          const data = await res.json();
+          if (seq !== this.fetchSeq) return;
+          chart.setOption({
+            animation: false,
+            series: [{
+              id: 'sankey',
+              type: 'sankey',
+              data: data.nodes,
+              links: data.links,
+              animation: false,
+              animationDurationUpdate: 0,
+              universalTransition: false,
+            }],
+          }, { lazyUpdate: false, silent: true });
+          this.liveTotals = data.totals;
+        } catch {}
+      },
+
+      liveRefresh() {
+        clearTimeout(this.debounceTimer);
+        this.debounceTimer = setTimeout(() => this.refresh(), 80);
+      },
+
+      commitDeferred() {
+        if (this.playing) return;
+        const url = location.pathname + '?' + this.buildQS();
+        history.replaceState(null, '', url);
+      },
+
+      togglePlay() {
+        if (this.playing) return this.stop();
+        this.start();
+      },
+
+      start() {
+        this.windowSize = Math.max(0, this.hi - this.lo);
+        if (this.mode === 'window') {
+          this.lo = 0; this.hi = Math.min(this.windowSize, this.months.length - 1);
+        } else {
+          this.lo = 0; this.hi = 0;
+        }
+        this.playing = true;
+        this.refresh();
+        this.timer = setInterval(() => this.tick(), this.intervalMs);
+      },
+
+      stop() {
+        this.playing = false;
+        clearInterval(this.timer);
+        this.timer = null;
+        this.commitDeferred();
+      },
+
+      tick() {
+        if (this.mode === 'window') {
+          if (this.hi >= this.months.length - 1) {
+            if (this.loop) { this.lo = 0; this.hi = Math.min(this.windowSize, this.months.length - 1); }
+            else { return this.stop(); }
+          } else {
+            this.lo += 1; this.hi += 1;
+          }
+        } else {
+          if (this.hi >= this.months.length - 1) {
+            if (this.loop) { this.hi = 0; }
+            else { return this.stop(); }
+          } else {
+            this.hi += 1;
+          }
+        }
+        this.refresh();
+      },
+
+      pxToIndex(clientX) {
+        const rect = this.$refs.track.getBoundingClientRect();
+        const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        return Math.round((x / rect.width) * (this.months.length - 1));
+      },
+
+      trackPointerDown(ev) {
+        if (ev.target.tagName === 'INPUT') return;
+        const idx = this.pxToIndex(ev.clientX);
+        if (idx <= this.lo || idx >= this.hi) return;
+        if (this.playing) this.stop();
+        this.dragging = true;
+        this.dragStart = { idx, lo: this.lo, hi: this.hi };
+        this.$refs.track.setPointerCapture(ev.pointerId);
+        ev.preventDefault();
+      },
+
+      trackPointerMove(ev) {
+        if (!this.dragging) return;
+        const idx = this.pxToIndex(ev.clientX);
+        const shift = idx - this.dragStart.idx;
+        const span = this.dragStart.hi - this.dragStart.lo;
+        let newLo = this.dragStart.lo + shift;
+        let newHi = this.dragStart.hi + shift;
+        if (newLo < 0) { newLo = 0; newHi = span; }
+        if (newHi > this.months.length - 1) { newHi = this.months.length - 1; newLo = newHi - span; }
+        if (newLo !== this.lo || newHi !== this.hi) {
+          this.lo = newLo; this.hi = newHi;
+          this.liveRefresh();
+        }
+      },
+
+      trackPointerUp(ev) {
+        if (!this.dragging) return;
+        this.dragging = false;
+        this.dragStart = null;
+        try { this.$refs.track.releasePointerCapture(ev.pointerId); } catch {}
+        this.commitDeferred();
+        this.refresh();
+      },
+
+      step(d) {
+        if (this.playing) this.stop();
+        if (d > 0) {
+          if (this.hi < this.months.length - 1) { this.lo += 1; this.hi += 1; }
+        } else {
+          if (this.lo > 0) { this.lo -= 1; this.hi -= 1; }
+        }
+        this.refresh();
+        this.commitDeferred();
+      },
+    };
+  };
+
+  chart.on('click', (params) => {
+    if (params.dataType === 'edge') {
+      const link = params.data;
+      const f = {};
+      if (link.mega) f.megas = [link.mega];
+      if (link.category) f.categories = [link.category];
+      if (link.side === 'card') f.account_types = ['CREDIT'];
+      if (link.side === 'bank' || link.side === 'income') f.account_types = ['BANK'];
+      window.ofinDrillTo('/transactions', f);
+    } else if (params.dataType === 'node') {
+      const f = {};
+      const mega = megaFromNode(params.name);
+      const cat = catFromNode(params.name);
+      if (mega) f.megas = [mega];
+      if (cat) f.categories = [cat];
+      window.ofinDrillTo('/transactions', f);
+    }
+  });
+
   window.addEventListener('resize', () => chart.resize());
 </script>
 {% endblock %}

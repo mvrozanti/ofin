@@ -5,7 +5,7 @@
 <h2>net worth · patrimônio mensal</h2>
 <div id="nw-chart" class="panel chart" style="height: clamp(280px, 50vh, 420px); padding: 0;"></div>
 
-<h2>income vs spend mensal (real)</h2>
+<h2>income vs spend mensal (real) + taxa de poupança</h2>
 <div id="is-chart" class="panel chart" style="height: clamp(260px, 45vh, 380px); padding: 0;"></div>
 
 <h2>assinaturas / cobranças recorrentes detectadas</h2>
@@ -49,10 +49,16 @@
 <script>
 const nwData = {{ nw_json | safe }};
 const isData = {{ is_json | safe }};
+const srData = {{ sr_json | safe }};
 const fxData = {{ fx_json | safe }};
 
 function fmtBRL(v) {
+  if (v === null || v === undefined) return window.OFIN_AUTHED ? 'R$ 0,00' : '•••';
+  if (!window.OFIN_AUTHED) return Number(v).toFixed(2) + '%';
   return 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function fmtAxis(v) {
+  return window.OFIN_AUTHED ? 'R$ ' + (v/1000).toFixed(1) + 'k' : v.toFixed(0) + '%';
 }
 
 const nwChart = echarts.init(document.getElementById('nw-chart'), 'dark');
@@ -64,7 +70,7 @@ nwChart.setOption({
   legend: { textStyle: { color: '#e6eaf0' } },
   grid: { left: 56, right: 16, top: 40, bottom: 40, containLabel: true },
   xAxis: { type: 'category', data: nwData.months, axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3' } },
-  yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: (v) => 'R$ ' + (v/1000).toFixed(1) + 'k' }, splitLine: { lineStyle: { color: '#1f242c' } } },
+  yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: fmtAxis }, splitLine: { lineStyle: { color: '#1f242c' } } },
   series: [
     { name: 'CC', type: 'line', stack: 'patrimonio', areaStyle: { opacity: 0.4 }, data: nwData.cc, smooth: true, color: '#7dd3fc' },
     { name: 'CDB', type: 'line', stack: 'patrimonio', areaStyle: { opacity: 0.4 }, data: nwData.cdb, smooth: true, color: '#4ade80' },
@@ -79,11 +85,15 @@ isChart.setOption({
   legend: { textStyle: { color: '#e6eaf0' } },
   grid: { left: 56, right: 16, top: 40, bottom: 40, containLabel: true },
   xAxis: { type: 'category', data: isData.months, axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3' } },
-  yAxis: { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: (v) => 'R$ ' + (v/1000).toFixed(1) + 'k' }, splitLine: { lineStyle: { color: '#1f242c' } } },
+  yAxis: [
+    { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: fmtAxis }, splitLine: { lineStyle: { color: '#1f242c' } } },
+    { type: 'value', axisLabel: { color: '#8b94a3', formatter: (v) => v + '%' }, splitLine: { show: false } },
+  ],
   series: [
-    { name: 'income', type: 'bar', data: isData.income, color: '#4ade80' },
-    { name: 'spend', type: 'bar', data: isData.spend, color: '#f87171' },
-    { name: 'net', type: 'line', data: isData.net, color: '#facc15', smooth: true, lineStyle: { width: 2 } },
+    { name: 'income', type: 'bar', yAxisIndex: 0, data: isData.income, color: '#4ade80' },
+    { name: 'spend', type: 'bar', yAxisIndex: 0, data: isData.spend, color: '#f87171' },
+    { name: 'net', type: 'line', yAxisIndex: 0, data: isData.net, color: '#facc15', smooth: true, lineStyle: { width: 2 } },
+    { name: 'taxa poupança %', type: 'line', yAxisIndex: 1, data: srData.rate, color: '#7dd3fc', smooth: true, lineStyle: { width: 2, type: 'dashed' } },
   ],
 });
 

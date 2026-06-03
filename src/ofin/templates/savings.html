@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}poupança{% endblock %}
+{% block body %}
+
+<section class="kpi-row">
+  <div class="kpi">
+    <div class="lbl">taxa média de poupança</div>
+    <div class="val">{{ '%.1f%%' % (avg_rate * 100) }}</div>
+    <div class="sub muted">média mensal no período</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">total economizado</div>
+    <div class="val mono {{ 'pos' if total_saved >= 0 else 'neg' }}">{{ total_saved | money }}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">gasto médio mensal</div>
+    <div class="val mono neg">{{ avg_monthly_spend | money }}</div>
+  </div>
+  <div class="kpi">
+    <div class="lbl">runway</div>
+    <div class="val mono">{% if runway_months %}{{ '%.1f' % runway_months }} m{% else %}—{% endif %}</div>
+    <div class="sub muted">liquidez {{ liquid | money }} / gasto médio</div>
+  </div>
+</section>
+
+<h2>taxa de poupança ao longo do tempo</h2>
+<div id="sr-chart" class="panel chart" style="height: clamp(280px, 50vh, 420px); padding: 0;"></div>
+
+<h2>tabela mensal</h2>
+<div class="tbl-wrap"><table class="grid">
+  <thead><tr><th>mês</th><th class="r">income</th><th class="r">spend</th><th class="r">poupança</th><th class="r">taxa</th></tr></thead>
+  <tbody>
+  {% for p in series %}
+    <tr data-drill="/transactions" data-filter='{"preset": "custom", "from": "{{ p.month }}-01", "to": "{{ p.month }}-31"}'>
+      <td class="mono">{{ p.month }}</td>
+      <td class="r mono pos">{{ p.income | money }}</td>
+      <td class="r mono neg">{{ p.spend | money }}</td>
+      <td class="r mono {{ 'pos' if p.saved >= 0 else 'neg' }}">{{ p.saved | money }}</td>
+      <td class="r mono {{ 'pos' if p.rate >= 0 else 'neg' }}">{{ '%.1f%%' % (p.rate * 100) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+const d = {{ json_data | safe }};
+const chart = echarts.init(document.getElementById('sr-chart'), 'dark');
+chart.setOption({
+  backgroundColor: 'transparent',
+  tooltip: { trigger: 'axis' },
+  legend: { textStyle: { color: '#e6eaf0' } },
+  grid: { left: 56, right: 56, top: 40, bottom: 40, containLabel: true },
+  xAxis: { type: 'category', data: d.months, axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3' } },
+  yAxis: [
+    { type: 'value', axisLine: { lineStyle: { color: '#1f242c' } }, axisLabel: { color: '#8b94a3', formatter: (v) => window.OFIN_AUTHED ? 'R$ ' + (v/1000).toFixed(1) + 'k' : v.toFixed(0) + '%' }, splitLine: { lineStyle: { color: '#1f242c' } } },
+    { type: 'value', axisLabel: { color: '#8b94a3', formatter: (v) => v + '%' }, splitLine: { show: false } },
+  ],
+  series: [
+    { name: 'income', type: 'bar', yAxisIndex: 0, data: d.income, color: '#4ade80' },
+    { name: 'spend', type: 'bar', yAxisIndex: 0, data: d.spend, color: '#f87171' },
+    { name: 'taxa %', type: 'line', yAxisIndex: 1, data: d.rate, smooth: true, color: '#7dd3fc', lineStyle: { width: 3 } },
+  ],
+});
+window.addEventListener('resize', () => chart.resize());
+</script>
+{% endblock %}

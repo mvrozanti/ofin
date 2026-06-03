@@ -1,76 +1,116 @@
 {% extends "base.html" %}
 {% block title %}dashboard{% endblock %}
 {% block body %}
-<section class="cards">
-  <div class="card big">
+
+{% macro delta(cur, prev, invert=false) %}
+{% if prev is not none and prev != 0 %}
+  {% set d = cur - prev %}
+  {% set p = (d / prev) * 100 %}
+  {% set cls = ('up' if (d > 0 and not invert) or (d < 0 and invert) else ('down' if d != 0 else 'flat')) %}
+  <span class="delta {{ cls }}">{{ '▲' if d > 0 else ('▼' if d < 0 else '·') }} {{ '%.1f%%' % p }}</span>
+{% else %}
+  <span class="delta flat">·</span>
+{% endif %}
+{% endmacro %}
+
+<section class="kpi-row">
+  <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK","CREDIT"]}'>
     <div class="lbl">patrimônio (CC + CDB)</div>
     <div class="val mono">{{ patrimonio | money }}</div>
+    <div class="sub muted">CC {{ cc_balance | money }} · CDB {{ cdb_balance | money }}</div>
   </div>
-  <div class="card">
-    <div class="lbl">saldo CC</div>
-    <div class="val mono">{{ cc_balance | money }}</div>
+  <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK"]}'>
+    <div class="lbl">entradas ({{ filter.label() }})</div>
+    <div class="val mono pos">{{ cur_in | money }}</div>
+    <div class="sub">{{ delta(cur_in, prev_in) }} <span class="muted">vs {{ prev_in | money }}</span></div>
   </div>
-  <div class="card">
-    <div class="lbl">saldo CDB Aplic Aut Mais</div>
-    <div class="val mono">{{ cdb_balance | money }}</div>
+  <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK","CREDIT"]}'>
+    <div class="lbl">saídas ({{ filter.label() }})</div>
+    <div class="val mono neg">{{ cur_out | money }}</div>
+    <div class="sub">{{ delta(cur_out, prev_out, invert=true) }} <span class="muted">vs {{ prev_out | money }}</span></div>
+  </div>
+  <div class="kpi" data-drill="/savings">
+    <div class="lbl">net / poupança</div>
+    <div class="val mono {{ 'pos' if saved >= 0 else 'neg' }}">{{ saved | money }}</div>
+    <div class="sub">
+      <span>taxa {{ '%.1f%%' % (savings_rate * 100) }}</span>
+      {{ delta(saved, saved_prev) }}
+    </div>
+  </div>
+  <div class="kpi" data-drill="/transactions" data-filter='{"megas": ["outros"]}'>
+    <div class="lbl">não categorizadas</div>
+    <div class="val mono {{ 'neg' if uncategorized > 0 else '' }}">{{ uncategorized }}</div>
+    <div class="sub muted">megas == "outros" ou nulo</div>
   </div>
 </section>
-
-<p class="muted" style="margin-top:8px">
-cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão próprio, estornos) e mostra só dinheiro entrando/saindo de verdade.
-<a href="/breakdown">ver breakdown completo por mês →</a>
-</p>
 
 <section>
-  <h2>cashflow mensal (real, exclui sweep CDB)</h2>
-  <div class="tbl-wrap"><table class="grid">
-    <thead><tr><th>mês</th><th class="r">entradas</th><th class="r">saídas</th><th class="r">net</th></tr></thead>
-    <tbody>
-    {% for m in cashflow %}
-      <tr>
-        <td class="mono">{{ m.month }}</td>
-        <td class="r mono pos">{{ m.inflow | money }}</td>
-        <td class="r mono neg">{{ m.outflow | money }}</td>
-        <td class="r mono {% if m.net >= 0 %}pos{% else %}neg{% endif %}">{{ m.net | money }}</td>
-      </tr>
+  <h2>cashflow waterfall · {{ filter.label() }}</h2>
+  <div class="panel">
+    {% if waterfall %}
+      {% for step in waterfall %}
+        <div class="waterfall-row {{ step.kind }}" data-drill="/transactions" data-filter='{"megas": ["{{ step.mega }}"]}'>
+          <span class="lbl">{{ step.label }}</span>
+          <div class="bar"><div style="width: {{ (((step.delta | abs) / wf_max) * 100) | round(1) }}%"></div></div>
+          <span class="amt mono {{ 'pos' if step.delta > 0 else 'neg' }}">{{ step.delta | money }}</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="muted">sem dados no período</div>
+    {% endif %}
+  </div>
+</section>
+
+<section>
+  <h2>o que mudou · maiores movers vs período anterior</h2>
+  {% if movers %}
+    <div class="movers">
+      {% for m in movers %}
+        <div class="mover" data-drill="/transactions" data-filter='{"megas": ["{{ m.mega }}"], "categories": ["{{ m.category }}"]}'>
+          <div class="name">
+            <strong>{{ m.mega }}</strong> · {{ m.category }}
+          </div>
+          <div class="vals">
+            <div class="mono">{{ m.current | money }} ← {{ m.previous | money }}</div>
+            <div>
+              {% set p = (m.pct * 100) %}
+              <span class="delta {{ 'up' if m.delta > 0 else ('down' if m.delta < 0 else 'flat') }}">
+                {{ '▲' if m.delta > 0 else ('▼' if m.delta < 0 else '·') }}
+                {% if m.previous == 0 %}novo{% else %}{{ '%.0f%%' % p }}{% endif %}
+              </span>
+              <span class="mono muted">{{ m.delta | money }}</span>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">sem comparação possível.</p>
+  {% endif %}
+</section>
+
+{% if budget_progress %}
+<section>
+  <h2>orçamentos do mês <a href="/budgets" class="muted small">gerenciar →</a></h2>
+  <div class="cards">
+    {% for b in budget_progress %}
+      <div class="gauge {{ b.status }}" data-drill="/transactions" data-filter='{"megas": ["{{ b.mega }}"]{% if b.category %}, "categories": ["{{ b.category }}"]{% endif %}}'>
+        <div class="gauge-head">
+          <span class="gauge-name">{{ b.mega }}{% if b.category %} · {{ b.category }}{% endif %}</span>
+          <span class="gauge-amt mono">{{ b.spent | money }} / {{ b.target | money }}</span>
+        </div>
+        <div class="bar"><div style="width: {{ ((b.pct * 100) if b.pct < 1 else 100) | round(1) }}%"></div></div>
+        <div class="foot">
+          <span>{{ '%.0f%%' % (b.pct * 100) }}</span>
+          <span class="{{ 'neg' if b.remaining < 0 else 'muted' }}">{{ b.remaining | money }} restante</span>
+        </div>
+      </div>
     {% endfor %}
-    </tbody>
-  </table></div>
-</section>
-
-<section class="two-col">
-  <div>
-    <h2>spend por categoria (30d)</h2>
-    <div class="tbl-wrap"><table class="grid">
-      <thead><tr><th>categoria</th><th class="r">spend</th><th class="r">tx</th></tr></thead>
-      <tbody>
-      {% for c in categories %}
-        <tr>
-          <td>{{ c.category }}</td>
-          <td class="r mono neg">{{ c.spend | money }}</td>
-          <td class="r mono muted">{{ c.count }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table></div>
-  </div>
-
-  <div>
-    <h2>top merchants (30d)</h2>
-    <div class="tbl-wrap"><table class="grid">
-      <thead><tr><th>merchant</th><th class="r">spend</th><th class="r">tx</th></tr></thead>
-      <tbody>
-      {% for m in merchants %}
-        <tr>
-          <td>{{ m.merchant }}</td>
-          <td class="r mono neg">{{ m.spend | money }}</td>
-          <td class="r mono muted">{{ m.count }}</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table></div>
   </div>
 </section>
+{% else %}
+<p class="muted" style="margin-top: 16px;">sem orçamentos definidos. <a href="/budgets">criar orçamentos →</a></p>
+{% endif %}
 
 <section>
   <h2>contas</h2>
@@ -78,7 +118,7 @@ cashflow exclui movimentações internas (self-PIX, sweep CDB, pagto cartão pr�
     <thead><tr><th>nome</th><th>tipo</th><th>subtipo</th><th class="r">saldo</th></tr></thead>
     <tbody>
     {% for a in accounts %}
-      <tr>
+      <tr data-drill="/transactions" data-filter='{"accounts": ["{{ a.id }}"]}'>
         <td>{{ a.name }}</td>
         <td class="muted">{{ a.type or '—' }}</td>
         <td class="muted">{{ a.subtype or '—' }}</td>
