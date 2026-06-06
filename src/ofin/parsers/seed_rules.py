@@ -29,6 +29,9 @@ DEFAULT_RULES: list[tuple] = [
     # User-confirmed: investment
     ("startswith", "int ted d ", "BANK", "debit", "financeiro", "investimento", False, 20),
 
+    # User-confirmed: salary TED (employer)
+    ("startswith", "ted 033.4635.marcelo", "BANK", "credit", "renda", "salario", False, 50),
+
     # User-confirmed: crypto / financial services
     ("contains", "bifinity", "BANK", "debit", "financeiro", "bifinity", False, 25),
     ("contains", "gowd instit", "BANK", "debit", "financeiro", "gowd", False, 25),
