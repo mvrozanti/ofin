@@ -224,6 +224,46 @@ class Goal(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class BalanceSnapshot(Base):
+    __tablename__ = "balance_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    asset: Mapped[str | None] = mapped_column(String(32))
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(28, 8))
+    value_brl: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    taken_at: Mapped[date] = mapped_column(Date, index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Loan(Base):
+    __tablename__ = "loans"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    person: Mapped[str] = mapped_column(String(128), index=True)
+    direction: Mapped[str] = mapped_column(String(8), default="lent")
+    principal: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    currency_code: Mapped[str] = mapped_column(String(8), default="BRL")
+    date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    tx_id: Mapped[str | None] = mapped_column(ForeignKey("transactions.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class LoanPayment(Base):
+    __tablename__ = "loan_payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    loan_id: Mapped[int] = mapped_column(ForeignKey("loans.id", ondelete="CASCADE"), index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    date: Mapped[date] = mapped_column(Date)
+    tx_id: Mapped[str | None] = mapped_column(ForeignKey("transactions.id", ondelete="SET NULL"))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class SavedView(Base):
     __tablename__ = "saved_views"
 

@@ -22,6 +22,7 @@ from ..analytics import (
     fx_by_currency,
     fx_by_month,
     income_mix,
+    latest_itau_balances,
     merchant_profiles,
     net_worth_series,
     savings_rate,
@@ -92,7 +93,7 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
                     accounts=f.accounts, account_types=f.account_types, megas=f.megas)
         prev_in, prev_out = await _flow_totals(s, pf)
 
-    cc_balance, cdb_balance = await _latest_balances(s)
+    cc_balance, cdb_balance = await latest_itau_balances(s)
     patrimonio = (cc_balance or Decimal(0)) + (cdb_balance or Decimal(0))
 
     waterfall = await cashflow_waterfall(s, f)
@@ -131,49 +132,6 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
             "budget_progress": bprog[:6],
         },
     )
-
-
-async def _latest_balances(s: AsyncSession) -> tuple[Decimal | None, Decimal | None]:
-    rows = (
-        await s.execute(
-            select(Document.account_id, Document.summary, Document.period_year, Document.period_month)
-            .where(Document.document_type == "extrato")
-            .order_by(Document.period_year.desc(), Document.period_month.desc())
-        )
-    ).all()
-    if not rows:
-        return None, None
-    latest_per_account: dict[str | None, dict] = {}
-    for acct, summary, _y, _m in rows:
-        if acct in latest_per_account:
-            continue
-        latest_per_account[acct] = summary or {}
-    cc_total = Decimal(0)
-    cdb_total = Decimal(0)
-    cc_found = False
-    cdb_found = False
-    for summary in latest_per_account.values():
-        cc_raw = summary.get("saldo_cc_ledger")
-        cdb_last = None
-        cdb_list = summary.get("cdb_snapshots") or []
-        if cdb_list:
-            v = cdb_list[-1].get("cdb_balance")
-            if v is not None:
-                cdb_last = Decimal(str(v))
-        if cc_raw is not None:
-            cc_total += Decimal(str(cc_raw))
-            cc_found = True
-        else:
-            cb = summary.get("closing_balance")
-            if cb is not None:
-                cc_total += Decimal(str(cb)) - (cdb_last or Decimal(0))
-                cc_found = True
-        if cdb_last is not None:
-            cdb_total += cdb_last
-            cdb_found = True
-    cc = cc_total if cc_found else None
-    cdb = cdb_total if cdb_found else None
-    return cc, cdb
 
 
 @router.get("/documents", response_class=HTMLResponse)
@@ -944,46 +902,6 @@ async def subscriptions_page(request: Request, s: AsyncSession = Depends(session
             "dormant": dormant,
             "monthly_burn": monthly_burn,
             "annual_burn": monthly_burn * 12,
-        },
-    )
-
-
-@router.get("/savings", response_class=HTMLResponse)
-async def savings_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    series = await savings_rate(s, f)
-    json_data = {
-        "months": [p.month for p in series],
-        "income": [float(p.income) for p in series],
-        "spend": [float(p.spend) for p in series],
-        "saved": [float(p.saved) for p in series],
-        "rate": [round(p.rate * 100, 2) for p in series],
-    }
-    avg_rate = (sum(p.rate for p in series) / len(series)) if series else 0.0
-    total_saved = sum((p.saved for p in series), Decimal(0))
-    avg_monthly_spend = (sum((p.spend for p in series), Decimal(0)) / len(series)) if series else Decimal(0)
-    cc, cdb = await _latest_balances(s)
-    liquid = (cc or Decimal(0)) + (cdb or Decimal(0))
-    runway_months = (liquid / avg_monthly_spend) if avg_monthly_spend else None
-
-    authed = request.state.auth.authed
-    if not authed:
-        peak = max([abs(v) for v in json_data["income"] + json_data["spend"] if v is not None] or [1.0])
-        json_data["income"] = [round((v / peak) * 100, 2) for v in json_data["income"]]
-        json_data["spend"] = [round((v / peak) * 100, 2) for v in json_data["spend"]]
-        json_data["saved"] = [round((v / peak) * 100, 2) for v in json_data["saved"]]
-    return templates.TemplateResponse(
-        "savings.html",
-        {
-            "request": request,
-            "filter": f,
-            "series": series,
-            "json_data": json.dumps(json_data, default=str),
-            "avg_rate": avg_rate,
-            "total_saved": total_saved,
-            "avg_monthly_spend": avg_monthly_spend,
-            "liquid": liquid,
-            "runway_months": runway_months,
         },
     )
 

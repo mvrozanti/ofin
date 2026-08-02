@@ -27,20 +27,20 @@ DEFAULT_RULES: list[tuple] = [
     # User-confirmed: rent
     ("startswith", "pag boleto lucia maria", "BANK", "debit", "moradia", "aluguel", False, 20),
 
-    # User-confirmed: investment
-    ("startswith", "int ted d ", "BANK", "debit", "financeiro", "investimento", False, 20),
+    # User-confirmed: investment (asset move, not consumption)
+    ("startswith", "int ted d ", "BANK", "debit", "internal", "investimento", True, 20),
 
     # User-confirmed: salary TED (employer)
     ("startswith", "ted 033.4635.marcelo", "BANK", "credit", "renda", "salario", False, 50),
 
-    # User-confirmed: crypto / financial services
-    ("contains", "bifinity", "BANK", "debit", "financeiro", "bifinity", False, 25),
-    ("contains", "gowd instit", "BANK", "debit", "financeiro", "gowd", False, 25),
-    ("contains", "latam gatew", "BANK", "debit", "financeiro", "latam", False, 25),
-    ("contains", "latam tecno", "BANK", "debit", "financeiro", "latam", False, 25),
-    ("contains", "pagali", "BANK", "debit", "financeiro", "pagali", False, 25),
-    ("contains", "aibr instit", "BANK", "debit", "financeiro", "aibr", False, 25),
-    ("contains", "fundo g d c", "BANK", None, "financeiro", "fundo_investimento", False, 25),
+    # User-confirmed: crypto / financial services (asset moves; stock tracked via snapshots)
+    ("contains", "bifinity", "BANK", "debit", "internal", "bifinity", True, 25),
+    ("contains", "gowd instit", "BANK", "debit", "internal", "gowd", True, 25),
+    ("contains", "latam gatew", "BANK", "debit", "internal", "latam", True, 25),
+    ("contains", "latam tecno", "BANK", "debit", "internal", "latam", True, 25),
+    ("contains", "pagali", "BANK", "debit", "internal", "pagali", True, 25),
+    ("contains", "aibr instit", "BANK", "debit", "internal", "aibr", True, 25),
+    ("contains", "fundo g d c", "BANK", None, "internal", "fundo_investimento", True, 25),
 
     # User-confirmed: electronics shop
     ("contains", "terabyte", "BANK", "debit", "compra_online", "eletronicos", False, 30),
@@ -191,7 +191,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 2
+SEED_VERSION = 3
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -200,6 +200,9 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         ("update", {"category": "estorno_pix"}, {"category": "estorno"}),
         ("update", {"category": "estorno_compra"}, {"category": "estorno"}),
         ("update", {"category": "assinatura_tech"}, {"category": "assinatura"}),
+    ],
+    3: [
+        ("update", {"mega": "financeiro"}, {"mega": "internal", "is_internal": True}),
     ],
 }
 

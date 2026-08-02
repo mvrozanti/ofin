@@ -399,3 +399,6 @@ body.read-only .bulk-bar { opacity: 0.5; pointer-events: none; }
   .topnav { flex-direction: column; align-items: stretch; }
   .topnav .filter-toggle { align-self: stretch; }
 }
+
+.quickadd { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 18px; }
+.quickadd input, .quickadd select { background: var(--panel, #12161c); color: inherit; border: 1px solid #1f242c; border-radius: 6px; padding: 6px 8px; font: inherit; }

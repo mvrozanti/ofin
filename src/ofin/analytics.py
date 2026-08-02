@@ -10,7 +10,7 @@ from sqlalchemy import and_, case, func as sqlfunc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .filters import Filter
-from .models import Account, Budget, Document, Transaction
+from .models import Account, BalanceSnapshot, Budget, Document, Loan, LoanPayment, Transaction
 
 
 def _not_internal():
@@ -681,3 +681,141 @@ async def net_worth_series(s: AsyncSession) -> list[NetWorthPoint]:
             )
         )
     return out
+
+
+@dataclass(slots=True)
+class SourceSnapshot:
+    source: str
+    value_brl: Decimal
+    taken_at: date
+
+
+@dataclass(slots=True)
+class Patrimonio:
+    itau_cc: Decimal | None
+    itau_cdb: Decimal | None
+    snapshots: list[SourceSnapshot]
+    loans_out: Decimal
+    loans_in: Decimal
+    total: Decimal
+
+
+async def latest_itau_balances(s: AsyncSession) -> tuple[Decimal | None, Decimal | None]:
+    rows = (
+        await s.execute(
+            select(Document.account_id, Document.summary, Document.period_year, Document.period_month)
+            .where(Document.document_type == "extrato")
+            .order_by(Document.period_year.desc(), Document.period_month.desc())
+        )
+    ).all()
+    if not rows:
+        return None, None
+    latest_per_account: dict[str | None, dict] = {}
+    for acct, summary, _y, _m in rows:
+        if acct in latest_per_account:
+            continue
+        latest_per_account[acct] = summary or {}
+    cc_total = Decimal(0)
+    cdb_total = Decimal(0)
+    cc_found = False
+    cdb_found = False
+    for summary in latest_per_account.values():
+        cc_raw = summary.get("saldo_cc_ledger")
+        cdb_last = None
+        cdb_list = summary.get("cdb_snapshots") or []
+        if cdb_list:
+            v = cdb_list[-1].get("cdb_balance")
+            if v is not None:
+                cdb_last = Decimal(str(v))
+        if cc_raw is not None:
+            cc_total += Decimal(str(cc_raw))
+            cc_found = True
+        else:
+            cb = summary.get("closing_balance")
+            if cb is not None:
+                cc_total += Decimal(str(cb)) - (cdb_last or Decimal(0))
+                cc_found = True
+        if cdb_last is not None:
+            cdb_total += cdb_last
+            cdb_found = True
+    cc = cc_total if cc_found else None
+    cdb = cdb_total if cdb_found else None
+    return cc, cdb
+
+
+async def loan_outstanding_rows(s: AsyncSession) -> list[tuple[Loan, Decimal, Decimal]]:
+    paid_sub = (
+        select(LoanPayment.loan_id, sqlfunc.sum(LoanPayment.amount).label("paid"))
+        .group_by(LoanPayment.loan_id)
+        .subquery()
+    )
+    rows = (
+        await s.execute(
+            select(Loan, sqlfunc.coalesce(paid_sub.c.paid, 0))
+            .join(paid_sub, paid_sub.c.loan_id == Loan.id, isouter=True)
+            .order_by(Loan.status, Loan.date.desc())
+        )
+    ).all()
+    out = []
+    for loan, paid in rows:
+        paid_d = Decimal(str(paid or 0))
+        out.append((loan, paid_d, loan.principal - paid_d))
+    return out
+
+
+async def patrimonio_breakdown(s: AsyncSession) -> Patrimonio:
+    cc, cdb = await latest_itau_balances(s)
+    latest = (
+        select(BalanceSnapshot.source, sqlfunc.max(BalanceSnapshot.taken_at).label("d"))
+        .group_by(BalanceSnapshot.source)
+        .subquery()
+    )
+    snap_rows = (
+        await s.execute(
+            select(BalanceSnapshot.source, latest.c.d, sqlfunc.sum(BalanceSnapshot.value_brl))
+            .join(latest, and_(BalanceSnapshot.source == latest.c.source, BalanceSnapshot.taken_at == latest.c.d))
+            .group_by(BalanceSnapshot.source, latest.c.d)
+            .order_by(BalanceSnapshot.source)
+        )
+    ).all()
+    snapshots = [SourceSnapshot(source=src, value_brl=Decimal(str(v)), taken_at=d) for src, d, v in snap_rows]
+    loans_out = Decimal(0)
+    loans_in = Decimal(0)
+    for loan, _paid, outstanding in await loan_outstanding_rows(s):
+        if loan.status != "open":
+            continue
+        if loan.direction == "lent":
+            loans_out += outstanding
+        else:
+            loans_in += outstanding
+    total = (
+        (cc or Decimal(0))
+        + (cdb or Decimal(0))
+        + sum((sn.value_brl for sn in snapshots), Decimal(0))
+        + loans_out
+        - loans_in
+    )
+    return Patrimonio(
+        itau_cc=cc,
+        itau_cdb=cdb,
+        snapshots=snapshots,
+        loans_out=loans_out,
+        loans_in=loans_in,
+        total=total,
+    )
+
+
+DARK_MEGAS = ("pix_out", "transferencia", "saque", "outros")
+
+
+async def dark_matter(s: AsyncSession, f: Filter) -> tuple[int, Decimal]:
+    q = (
+        select(sqlfunc.count(), sqlfunc.coalesce(sqlfunc.sum(spend_amount_abs()), 0))
+        .select_from(Transaction)
+        .join(Account, Transaction.account_id == Account.id)
+        .where(spend_cond())
+        .where(or_(Transaction.mega.in_(DARK_MEGAS), Transaction.mega.is_(None)))
+    )
+    q = f.apply_to_tx(q)
+    n, total = (await s.execute(q)).one()
+    return int(n or 0), Decimal(str(total or 0))

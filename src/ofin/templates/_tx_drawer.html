@@ -115,6 +115,10 @@
           <textarea class="tx-note" x-model="drawerForm.note" placeholder="nota opcional…" rows="2"></textarea>
 
           <div class="tx-actions">
+            <a class="btn ghost" x-show="drawerTx.mega === 'pessoas'"
+               :href="'/savings?loan_tx=' + encodeURIComponent(drawerTx.id) + '&loan_person=' + encodeURIComponent(drawerTx.category || '') + '&loan_amount=' + Math.abs(parseFloat(drawerTx.amount) || 0) + '&loan_date=' + encodeURIComponent(drawerTx.date || '')">
+              → registrar como empréstimo
+            </a>
             <button type="button" class="btn ghost" @click="closeDrawer">cancelar</button>
             <button type="button" class="btn" @click="submitDrawer">
               <span x-text="drawerForm.mode === 'rule' ? 'criar regra + aplicar' : 'salvar override'"></span>
