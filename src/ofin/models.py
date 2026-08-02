@@ -176,23 +176,6 @@ class TransactionOverride(Base):
     set_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
-class Budget(Base):
-    __tablename__ = "budgets"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    mega: Mapped[str] = mapped_column(String(64), index=True)
-    category: Mapped[str | None] = mapped_column(String(128), index=True)
-    period: Mapped[str] = mapped_column(String(16), default="monthly")
-    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
-    currency_code: Mapped[str] = mapped_column(String(8), default="BRL")
-    starts_on: Mapped[date | None] = mapped_column(Date)
-    ends_on: Mapped[date | None] = mapped_column(Date)
-    notes: Mapped[str | None] = mapped_column(Text)
-    enabled: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-
 class Tag(Base):
     __tablename__ = "tags"
 
@@ -208,20 +191,6 @@ class TransactionTag(Base):
     tx_id: Mapped[str] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), primary_key=True)
     tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
-class Goal(Base):
-    __tablename__ = "goals"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(128))
-    target_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
-    currency_code: Mapped[str] = mapped_column(String(8), default="BRL")
-    target_date: Mapped[date | None] = mapped_column(Date)
-    kind: Mapped[str] = mapped_column(String(32), default="net_worth")
-    notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class BalanceSnapshot(Base):

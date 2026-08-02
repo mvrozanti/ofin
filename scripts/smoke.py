@@ -105,9 +105,7 @@ def main(base: str) -> int:
     base = base.rstrip("/")
     client = httpx.Client(base_url=base, timeout=15.0)
     checks: list[Result] = []
-    pages = ["/", "/sankey", "/breakdown", "/analytics", "/savings",
-             "/income", "/merchants", "/subscriptions", "/transactions",
-             "/rules", "/budgets", "/goals", "/calendar", "/anomalies"]
+    pages = ["/", "/sankey", "/savings", "/transactions", "/rules"]
     for p in pages:
         checks.append(check_no_brl(client, p))
         checks.append(check_no_pii(client, p, PII))
@@ -117,7 +115,8 @@ def main(base: str) -> int:
     checks.append(check_get(client, "/transactions.csv", 403))
     checks.append(check_post_blocked(client, "/recategorize"))
     checks.append(check_post_blocked(client, "/rules"))
-    checks.append(check_post_blocked(client, "/budgets"))
+    checks.append(check_post_blocked(client, "/snapshots"))
+    checks.append(check_post_blocked(client, "/loans"))
     checks.append(check_post_blocked(client, "/api/transactions/abc/categorize"))
     checks.append(check_post_blocked(client, "/api/transactions/bulk_categorize"))
 

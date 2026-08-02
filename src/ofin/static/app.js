@@ -47,6 +47,7 @@ function buildQuery(f) {
   if (f.include_sweep) p.set('sweep', '1');
   if (f.compare && f.compare !== 'none') p.set('compare', f.compare);
   if (f.display_currency && f.display_currency !== 'BRL') p.set('display_currency', f.display_currency);
+  if (f.sort) p.set('sort', f.sort);
   return p.toString();
 }
 
@@ -311,7 +312,7 @@ function ofinShell() {
       if (ev.key === 'Escape') { this.drawerOpen = false; this.filterOpen = false; return; }
       if (ev.key === 'g') { this.startKbd('g'); return; }
       if (this.kbdBuffer === 'g') {
-        const map = { d: '/', s: '/sankey', t: '/transactions', m: '/merchants', c: '/calendar', b: '/budgets', r: '/rules', a: '/analytics', i: '/income', n: '/anomalies' };
+        const map = { d: '/', s: '/sankey', t: '/transactions', p: '/savings', r: '/rules' };
         if (map[ev.key]) {
           const qs = buildQuery(readParams());
           location.href = map[ev.key] + (qs ? '?' + qs : '');

@@ -13,26 +13,16 @@ from sqlalchemy import case, desc, func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..analytics import (
-    anomalies_by_mega,
-    budget_progress,
-    cashflow_waterfall,
     category_movers,
-    daily_spend_calendar,
-    detect_subscriptions,
-    fx_by_currency,
-    fx_by_month,
-    income_mix,
-    latest_itau_balances,
-    merchant_profiles,
-    net_worth_series,
-    savings_rate,
+    dark_matter,
+    patrimonio_breakdown,
 )
 from ..analyzer import accounts as accounts_q
 from ..config import settings
 from ..db import session_dep
 from ..filters import Filter
 from ..import_pdfs import import_pdf
-from ..models import Account, Budget, Document, Goal, ParseWarning, Transaction, TransactionOverride
+from ..models import Account, Document, ParseWarning, Transaction, TransactionOverride
 
 router = APIRouter()
 
@@ -69,13 +59,6 @@ async def _flow_totals(s: AsyncSession, f: Filter) -> tuple[Decimal, Decimal]:
     return cur_in, cur_out
 
 
-async def _uncategorized_count(s: AsyncSession) -> int:
-    q = select(sqlfunc.count()).where(
-        (Transaction.mega.is_(None)) | (Transaction.mega.in_(["outros", "uncategorized"]))
-    )
-    return int((await s.execute(q)).scalar() or 0)
-
-
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
     f = Filter.from_request(request)
@@ -93,21 +76,16 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
                     accounts=f.accounts, account_types=f.account_types, megas=f.megas)
         prev_in, prev_out = await _flow_totals(s, pf)
 
-    cc_balance, cdb_balance = await latest_itau_balances(s)
-    patrimonio = (cc_balance or Decimal(0)) + (cdb_balance or Decimal(0))
+    pat = await patrimonio_breakdown(s)
 
-    waterfall = await cashflow_waterfall(s, f)
-    movers = await category_movers(s, f, top=10)
+    movers = [m for m in await category_movers(s, f, top=10) if abs(m.delta) >= 100][:6]
     authed_dash = request.state.auth.authed
     if not authed_dash:
         for m in movers:
             if m.mega == "pessoas":
                 m.category = "•••"
     accs = await accounts_q(s)
-    uncat = await _uncategorized_count(s)
-
-    budgets_q = (await s.execute(select(Budget).where(Budget.enabled == True))).scalars().all()  # noqa: E712
-    bprog = await budget_progress(s, list(budgets_q), f)
+    dark_n, dark_total = await dark_matter(s, f)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -121,15 +99,11 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
             "saved": cur_in - cur_out,
             "saved_prev": prev_in - prev_out,
             "savings_rate": (float((cur_in - cur_out) / cur_in) if cur_in else 0.0),
-            "cc_balance": cc_balance,
-            "cdb_balance": cdb_balance,
-            "patrimonio": patrimonio,
-            "waterfall": waterfall,
-            "wf_max": max((abs(w.delta) for w in waterfall), default=Decimal(1)),
+            "pat": pat,
             "movers": movers,
             "accounts": accs,
-            "uncategorized": uncat,
-            "budget_progress": bprog[:6],
+            "dark_n": dark_n,
+            "dark_total": dark_total,
         },
     )
 
@@ -355,159 +329,6 @@ async def import_submit(
     return templates.TemplateResponse("import.html", {"request": request, "filter": Filter.from_request(request), "results": results})
 
 
-@router.get("/breakdown", response_class=HTMLResponse)
-async def breakdown_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    docs = (
-        await s.execute(
-            select(Document)
-            .where(Document.document_type == "extrato")
-            .order_by(Document.period_year.desc(), Document.period_month.desc())
-        )
-    ).scalars().all()
-
-    rows = []
-    for d in docs:
-        if not d.period_year or not d.period_month:
-            continue
-        period = f"{d.period_year:04d}-{d.period_month:02d}"
-        sums = (
-            await s.execute(
-                select(
-                    sqlfunc.sum(
-                        case((Transaction.amount > 0, Transaction.amount), else_=0)
-                    ).label("all_in"),
-                    sqlfunc.sum(
-                        case((Transaction.amount < 0, -Transaction.amount), else_=0)
-                    ).label("all_out"),
-                    sqlfunc.sum(
-                        case(
-                            (
-                                (Transaction.amount > 0)
-                                & (sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False)  # noqa: E712
-                                & (sqlfunc.coalesce(Transaction.mega, "") != "internal"),
-                                Transaction.amount,
-                            ),
-                            else_=0,
-                        )
-                    ).label("real_in"),
-                    sqlfunc.sum(
-                        case(
-                            (
-                                (Transaction.amount < 0)
-                                & (sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False)  # noqa: E712
-                                & (sqlfunc.coalesce(Transaction.mega, "") != "internal"),
-                                -Transaction.amount,
-                            ),
-                            else_=0,
-                        )
-                    ).label("real_out"),
-                    sqlfunc.sum(
-                        case(
-                            (
-                                (Transaction.amount > 0)
-                                & (sqlfunc.coalesce(Transaction.mega, "") == "internal")
-                                & (sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False),  # noqa: E712
-                                Transaction.amount,
-                            ),
-                            else_=0,
-                        )
-                    ).label("internal_in"),
-                    sqlfunc.sum(
-                        case(
-                            (
-                                (Transaction.amount < 0)
-                                & (sqlfunc.coalesce(Transaction.mega, "") == "internal")
-                                & (sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False),  # noqa: E712
-                                -Transaction.amount,
-                            ),
-                            else_=0,
-                        )
-                    ).label("internal_out"),
-                ).where(
-                    Transaction.document_id == d.id,
-                    sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
-                )
-            )
-        ).one()
-        sm = d.summary or {}
-        h_in = Decimal(str(sm.get("entradas_total") or 0))
-        h_out = Decimal(str(sm.get("saidas_total") or 0))
-        parser_in = sums.all_in or Decimal(0)
-        parser_out = sums.all_out or Decimal(0)
-        rows.append(
-            {
-                "period": period,
-                "doc_id": d.id,
-                "header_in": h_in,
-                "header_out": h_out,
-                "parser_in": parser_in,
-                "parser_out": parser_out,
-                "real_in": sums.real_in or Decimal(0),
-                "real_out": sums.real_out or Decimal(0),
-                "internal_in": sums.internal_in or Decimal(0),
-                "internal_out": sums.internal_out or Decimal(0),
-                "in_match": h_in == parser_in,
-                "out_match": h_out == parser_out,
-            }
-        )
-
-    for i, r in enumerate(rows):
-        prev = rows[i + 1] if i + 1 < len(rows) else None
-        yoy = next((rr for rr in rows if rr["period"][:4] == str(int(r["period"][:4]) - 1) and rr["period"][5:] == r["period"][5:]), None)
-        r["delta_out_prev"] = r["real_out"] - prev["real_out"] if prev else None
-        r["delta_out_yoy"] = r["real_out"] - yoy["real_out"] if yoy else None
-        r["delta_in_prev"] = r["real_in"] - prev["real_in"] if prev else None
-        r["delta_in_yoy"] = r["real_in"] - yoy["real_in"] if yoy else None
-
-    income_cats = await _category_summary(s, sign="credit", internal=False)
-    internal_cats = await _category_summary(s, sign="credit", internal=True)
-    spend_cats = await _category_summary(s, sign="debit", internal=False)
-    if not request.state.auth.authed:
-        for lst in (income_cats, internal_cats, spend_cats):
-            for c in lst:
-                if c.get("mega") == "pessoas":
-                    c["category"] = "•••"
-    return templates.TemplateResponse(
-        "breakdown.html",
-        {
-            "request": request,
-            "filter": f,
-            "rows": rows,
-            "income_cats": income_cats,
-            "internal_cats": internal_cats,
-            "spend_cats": spend_cats,
-        },
-    )
-
-
-async def _category_summary(s: AsyncSession, *, sign: str, internal: bool) -> list[dict]:
-    sign_filter = Transaction.amount > 0 if sign == "credit" else Transaction.amount < 0
-    q = (
-        select(
-            Transaction.mega,
-            Transaction.category,
-            sqlfunc.sum(Transaction.amount).label("total"),
-            sqlfunc.count().label("n"),
-        )
-        .join(Account, Transaction.account_id == Account.id)
-        .where(
-            Account.type == "BANK",
-            sign_filter,
-            sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
-            (sqlfunc.coalesce(Transaction.mega, "") == "internal") == (True if internal else False),
-        )
-        .group_by(Transaction.mega, Transaction.category)
-    )
-    rows = (await s.execute(q)).all()
-    out = [
-        {"mega": mega or "—", "category": cat or "uncategorized", "total": abs(Decimal(str(total or 0))), "n": int(n)}
-        for mega, cat, total, n in rows
-    ]
-    out.sort(key=lambda x: x["total"], reverse=True)
-    return out
-
-
 @router.get("/sankey", response_class=HTMLResponse)
 async def sankey_page(
     request: Request,
@@ -692,69 +513,6 @@ async def sankey_page(
     )
 
 
-@router.get("/analytics", response_class=HTMLResponse)
-async def analytics_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-
-    subs = await detect_subscriptions(s, min_months=3, tolerance_pct=Decimal("0.20"))
-    fx_ccy = await fx_by_currency(s)
-    fx_mo = await fx_by_month(s)
-    nw = await net_worth_series(s)
-
-    nw_json = {
-        "months": [p.month for p in nw],
-        "cc": [float(p.cc_balance) if p.cc_balance is not None else None for p in nw],
-        "cdb": [float(p.cdb_balance) if p.cdb_balance is not None else None for p in nw],
-        "total": [float(p.total) if p.total is not None else None for p in nw],
-    }
-    is_json = {
-        "months": [p.month for p in nw],
-        "income": [float(p.real_income) for p in nw],
-        "spend": [float(p.real_spend) for p in nw],
-        "net": [float(p.net) for p in nw],
-    }
-    sr = await savings_rate(s, f)
-    sr_json = {
-        "months": [p.month for p in sr],
-        "rate": [round(p.rate * 100, 2) for p in sr],
-    }
-    usd_months = sorted({fm.month for fm in fx_mo if fm.currency == "USD"})
-    brl_by_mo = {fm.month: float(fm.brl_total) for fm in fx_mo if fm.currency == "USD"}
-    rate_by_mo = {fm.month: float(fm.avg_rate) for fm in fx_mo if fm.currency == "USD"}
-    fx_json = {
-        "months": usd_months,
-        "brl": [brl_by_mo.get(m, 0) for m in usd_months],
-        "rate": [rate_by_mo.get(m, None) for m in usd_months],
-    }
-
-    authed = request.state.auth.authed
-    if not authed:
-        from ..masking import scale_to_max
-        nw_json["cc"] = scale_to_max(nw_json["cc"])
-        nw_json["cdb"] = scale_to_max(nw_json["cdb"])
-        nw_json["total"] = scale_to_max(nw_json["total"])
-        peak = max([abs(v) for v in is_json["income"] + is_json["spend"] if v is not None] or [1.0])
-        is_json["income"] = [round((v / peak) * 100, 2) if v is not None else None for v in is_json["income"]]
-        is_json["spend"] = [round((v / peak) * 100, 2) if v is not None else None for v in is_json["spend"]]
-        is_json["net"] = [round((v / peak) * 100, 2) if v is not None else None for v in is_json["net"]]
-        fx_json["brl"] = scale_to_max(fx_json["brl"])
-        fx_json["rate"] = scale_to_max(fx_json["rate"])
-
-    return templates.TemplateResponse(
-        "analytics.html",
-        {
-            "request": request,
-            "filter": f,
-            "subscriptions": subs,
-            "fx_by_ccy": fx_ccy,
-            "nw_json": json.dumps(nw_json, default=str),
-            "is_json": json.dumps(is_json, default=str),
-            "sr_json": json.dumps(sr_json, default=str),
-            "fx_json": json.dumps(fx_json, default=str),
-        },
-    )
-
-
 @router.get("/transactions", response_class=HTMLResponse)
 async def transactions_page(
     request: Request,
@@ -830,176 +588,3 @@ async def transactions_csv(request: Request, s: AsyncSession = Depends(session_d
     return StreamingResponse(stream(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=ofin-transactions.csv"})
 
 
-@router.get("/calendar", response_class=HTMLResponse)
-async def calendar_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    days = await daily_spend_calendar(s, f)
-    if days:
-        max_spend = float(max(d.spend for d in days)) or 1.0
-    else:
-        max_spend = 1.0
-    authed = request.state.auth.authed
-    cells = []
-    for d in days:
-        intensity = min(5, int((float(d.spend) / max_spend) * 5)) if max_spend else 0
-        if authed:
-            spend_val = float(d.spend)
-            income_val = float(d.income)
-        else:
-            spend_val = round((float(d.spend) / max_spend) * 100.0, 2) if max_spend else 0.0
-            income_val = round((float(d.income) / max_spend) * 100.0, 2) if max_spend else 0.0
-        cells.append({
-            "day": d.day.isoformat(),
-            "spend": spend_val,
-            "income": income_val,
-            "n": d.n,
-            "level": intensity,
-        })
-    top_spend = sorted(cells, key=lambda c: c["spend"], reverse=True)[:15]
-    top_income = [c for c in sorted(cells, key=lambda c: c["income"], reverse=True) if c["income"] > 0][:15]
-    range_from = cells[0]["day"] if cells else None
-    range_to = cells[-1]["day"] if cells else None
-    return templates.TemplateResponse(
-        "calendar.html",
-        {
-            "request": request,
-            "filter": f,
-            "cells": cells,
-            "top_spend": top_spend,
-            "top_income": top_income,
-            "max_spend": max_spend if authed else 100.0,
-            "range_from": range_from,
-            "range_to": range_to,
-        },
-    )
-
-
-@router.get("/merchants", response_class=HTMLResponse)
-async def merchants_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    profiles = await merchant_profiles(s, f, top=200)
-    return templates.TemplateResponse(
-        "merchants.html",
-        {"request": request, "filter": f, "merchants": profiles},
-    )
-
-
-@router.get("/subscriptions", response_class=HTMLResponse)
-async def subscriptions_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    subs = await detect_subscriptions(s, min_months=3, tolerance_pct=Decimal("0.20"))
-    today = date.today()
-    monthly_burn = sum((s_.avg_amount for s_ in subs), Decimal(0))
-    dormant = [s_ for s_ in subs if (today - s_.last_seen).days > 60]
-    active = [s_ for s_ in subs if (today - s_.last_seen).days <= 60]
-    return templates.TemplateResponse(
-        "subscriptions.html",
-        {
-            "request": request,
-            "filter": f,
-            "subscriptions": subs,
-            "active": active,
-            "dormant": dormant,
-            "monthly_burn": monthly_burn,
-            "annual_burn": monthly_burn * 12,
-        },
-    )
-
-
-@router.get("/income", response_class=HTMLResponse)
-async def income_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    mix = await income_mix(s, f)
-    if not request.state.auth.authed:
-        for m in mix:
-            if m.mega == "pessoas":
-                m.category = "•••"
-    total = sum((m.total for m in mix), Decimal(0))
-    return templates.TemplateResponse(
-        "income.html",
-        {"request": request, "filter": f, "mix": mix, "total": total},
-    )
-
-
-@router.get("/anomalies", response_class=HTMLResponse)
-async def anomalies_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    anomalies = await anomalies_by_mega(s, f, z_threshold=1.6)
-    return templates.TemplateResponse(
-        "anomalies.html",
-        {"request": request, "filter": f, "anomalies": anomalies},
-    )
-
-
-@router.get("/goals", response_class=HTMLResponse)
-async def goals_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
-    goals = (await s.execute(select(Goal).order_by(Goal.target_date.asc().nullslast()))).scalars().all()
-    cc, cdb = await _latest_balances(s)
-    nw = (cc or Decimal(0)) + (cdb or Decimal(0))
-    nw_series = await net_worth_series(s)
-    growth = None
-    if len(nw_series) >= 2 and nw_series[-1].total and nw_series[0].total:
-        months = len(nw_series)
-        growth = (nw_series[-1].total - nw_series[0].total) / Decimal(max(months - 1, 1))
-    enriched = []
-    for g in goals:
-        progress = float(nw / g.target_amount) if g.target_amount else 0.0
-        eta = None
-        if growth and growth > 0 and g.target_amount > nw:
-            months_needed = int((g.target_amount - nw) / growth)
-            from datetime import date as _date
-            today = _date.today()
-            eta_year = today.year + ((today.month - 1 + months_needed) // 12)
-            eta_month = ((today.month - 1 + months_needed) % 12) + 1
-            eta = f"{eta_year:04d}-{eta_month:02d}"
-        enriched.append({"goal": g, "progress": progress, "eta": eta})
-    return templates.TemplateResponse(
-        "goals.html",
-        {
-            "request": request,
-            "filter": f,
-            "goals": enriched,
-            "current_nw": nw,
-            "monthly_growth": growth,
-        },
-    )
-
-
-@router.post("/goals")
-async def goal_create(
-    request: Request,
-    s: AsyncSession = Depends(session_dep),
-):
-    form = await request.form()
-    target_date = form.get("target_date") or None
-    td = None
-    if target_date:
-        try:
-            from datetime import date as _date
-            td = _date.fromisoformat(target_date)
-        except ValueError:
-            td = None
-    g = Goal(
-        name=form.get("name", "meta"),
-        target_amount=Decimal(form.get("target_amount", "0").replace(",", ".")),
-        currency_code=(form.get("currency_code") or "BRL").upper(),
-        target_date=td,
-        kind=form.get("kind", "net_worth"),
-        notes=form.get("notes") or None,
-    )
-    s.add(g)
-    await s.commit()
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse("/goals", status_code=303)
-
-
-@router.post("/goals/{goal_id}/delete")
-async def goal_delete(goal_id: int, s: AsyncSession = Depends(session_dep)):
-    g = await s.get(Goal, goal_id)
-    if not g:
-        raise HTTPException(404)
-    await s.delete(g)
-    await s.commit()
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse("/goals", status_code=303)

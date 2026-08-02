@@ -14,10 +14,14 @@
 {% endmacro %}
 
 <section class="kpi-row">
-  <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK","CREDIT"]}'>
-    <div class="lbl">patrimônio (CC + CDB)</div>
-    <div class="val mono">{{ patrimonio | money }}</div>
-    <div class="sub muted">CC {{ cc_balance | money }} · CDB {{ cdb_balance | money }}</div>
+  <div class="kpi" data-drill="/savings">
+    <div class="lbl">patrimônio total</div>
+    <div class="val mono">{{ pat.total | money }}</div>
+    <div class="sub muted">
+      itaú {{ ((pat.itau_cc or 0) + (pat.itau_cdb or 0)) | money }}
+      {% for sn in pat.snapshots %} · {{ sn.source }} {{ sn.value_brl | money }}{% endfor %}
+      {% if pat.loans_out %} · emprestado {{ pat.loans_out | money }}{% endif %}
+    </div>
   </div>
   <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK"]}'>
     <div class="lbl">entradas ({{ filter.label() }})</div>
@@ -37,27 +41,10 @@
       {{ delta(saved, saved_prev) }}
     </div>
   </div>
-  <div class="kpi" data-drill="/transactions" data-filter='{"megas": ["outros"]}'>
-    <div class="lbl">não categorizadas</div>
-    <div class="val mono {{ 'neg' if uncategorized > 0 else '' }}">{{ uncategorized }}</div>
-    <div class="sub muted">megas == "outros" ou nulo</div>
-  </div>
-</section>
-
-<section>
-  <h2>cashflow waterfall · {{ filter.label() }}</h2>
-  <div class="panel">
-    {% if waterfall %}
-      {% for step in waterfall %}
-        <div class="waterfall-row {{ step.kind }}" data-drill="/transactions" data-filter='{"megas": ["{{ step.mega }}"]}'>
-          <span class="lbl">{{ step.label }}</span>
-          <div class="bar"><div style="width: {{ (((step.delta | abs) / wf_max) * 100) | round(1) }}%"></div></div>
-          <span class="amt mono {{ 'pos' if step.delta > 0 else 'neg' }}">{{ step.delta | money }}</span>
-        </div>
-      {% endfor %}
-    {% else %}
-      <div class="muted">sem dados no período</div>
-    {% endif %}
+  <div class="kpi" data-drill="/transactions" data-filter='{"megas": ["pix_out","transferencia","saque","outros"], "preset": "all", "sort": "amount"}'>
+    <div class="lbl">☄ matéria escura</div>
+    <div class="val mono {{ 'neg' if dark_n > 0 else 'pos' }}">{{ dark_total | money }}</div>
+    <div class="sub muted">{{ dark_n }} transações sem categoria real{% if dark_n == 0 %} — tudo limpo{% endif %}</div>
   </div>
 </section>
 
@@ -88,29 +75,6 @@
     <p class="muted">sem comparação possível.</p>
   {% endif %}
 </section>
-
-{% if budget_progress %}
-<section>
-  <h2>orçamentos do mês <a href="/budgets" class="muted small">gerenciar →</a></h2>
-  <div class="cards">
-    {% for b in budget_progress %}
-      <div class="gauge {{ b.status }}" data-drill="/transactions" data-filter='{"megas": ["{{ b.mega }}"]{% if b.category %}, "categories": ["{{ b.category }}"]{% endif %}}'>
-        <div class="gauge-head">
-          <span class="gauge-name">{{ b.mega }}{% if b.category %} · {{ b.category }}{% endif %}</span>
-          <span class="gauge-amt mono">{{ b.spent | money }} / {{ b.target | money }}</span>
-        </div>
-        <div class="bar"><div style="width: {{ ((b.pct * 100) if b.pct < 1 else 100) | round(1) }}%"></div></div>
-        <div class="foot">
-          <span>{{ '%.0f%%' % (b.pct * 100) }}</span>
-          <span class="{{ 'neg' if b.remaining < 0 else 'muted' }}">{{ b.remaining | money }} restante</span>
-        </div>
-      </div>
-    {% endfor %}
-  </div>
-</section>
-{% else %}
-<p class="muted" style="margin-top: 16px;">sem orçamentos definidos. <a href="/budgets">criar orçamentos →</a></p>
-{% endif %}
 
 <section>
   <h2>contas</h2>

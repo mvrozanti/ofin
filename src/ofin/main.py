@@ -16,7 +16,7 @@ from .db import engine, session
 from .models import Base
 from .parsers.categorize_engine import apply_rules_to_all
 from .parsers.seed_rules import migrate_seed_rules, seed_default_rules
-from .routes import api, budgets, pages, rules, wealth
+from .routes import api, pages, rules, wealth
 
 structlog.configure(
     wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, settings().log_level.upper(), logging.INFO)),
@@ -75,7 +75,6 @@ app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 app.include_router(pages.router)
 app.include_router(api.router)
 app.include_router(rules.router)
-app.include_router(budgets.router)
 app.include_router(wealth.router)
 
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import statistics
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -10,7 +8,7 @@ from sqlalchemy import and_, case, func as sqlfunc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .filters import Filter
-from .models import Account, BalanceSnapshot, Budget, Document, Loan, LoanPayment, Transaction
+from .models import Account, BalanceSnapshot, Document, Loan, LoanPayment, Transaction
 
 
 def _not_internal():
@@ -36,36 +34,6 @@ def spend_amount_abs():
 
 
 @dataclass(slots=True)
-class Subscription:
-    merchant: str
-    avg_amount: Decimal
-    last_amount: Decimal
-    last_seen: date
-    first_seen: date
-    months_active: int
-    cumulative: Decimal
-    sample_count: int
-
-
-@dataclass(slots=True)
-class FxByMonth:
-    month: str
-    currency: str
-    original_total: Decimal
-    brl_total: Decimal
-    avg_rate: Decimal
-
-
-@dataclass(slots=True)
-class FxByCurrency:
-    currency: str
-    n: int
-    original_total: Decimal
-    brl_total: Decimal
-    avg_rate: Decimal
-
-
-@dataclass(slots=True)
 class NetWorthPoint:
     month: str
     cc_balance: Decimal | None
@@ -74,168 +42,6 @@ class NetWorthPoint:
     real_income: Decimal
     real_spend: Decimal
     net: Decimal
-
-
-def _norm_key(merchant: str) -> str:
-    s = merchant.upper().strip()
-    s = s.replace(" ", "").replace("*", "").replace(",", "")
-    return s[:24]
-
-
-async def detect_subscriptions(
-    s: AsyncSession,
-    *,
-    min_months: int = 3,
-    tolerance_pct: Decimal = Decimal("0.20"),
-) -> list[Subscription]:
-    rows = (
-        await s.execute(
-            select(Transaction.date, Transaction.amount, Transaction.description)
-            .join(Account, Transaction.account_id == Account.id)
-            .where(
-                Account.type == "CREDIT",
-                Transaction.amount > 0,
-                Transaction.description.is_not(None),
-            )
-        )
-    ).all()
-
-    buckets: dict[str, list[tuple[date, Decimal, str]]] = defaultdict(list)
-    for d, amt, desc in rows:
-        if amt is None or amt <= 0:
-            continue
-        key = _norm_key(desc or "")
-        if not key or len(key) < 4:
-            continue
-        buckets[key].append((d, Decimal(str(amt)), desc))
-
-    subs: list[Subscription] = []
-    for key, entries in buckets.items():
-        if len(entries) < min_months:
-            continue
-        months_seen = {(d.year, d.month) for d, _, _ in entries}
-        if len(months_seen) < min_months:
-            continue
-        entries.sort(key=lambda e: e[0])
-        amts = [a for _, a, _ in entries]
-        avg = sum(amts, Decimal(0)) / Decimal(len(amts))
-        if avg == 0:
-            continue
-        deltas = [abs(a - avg) / avg for a in amts]
-        if max(deltas) > tolerance_pct * Decimal(3):
-            continue
-        merchant = max((desc for _, _, desc in entries), key=lambda x: len(x or ""))
-        subs.append(
-            Subscription(
-                merchant=merchant,
-                avg_amount=avg.quantize(Decimal("0.01")),
-                last_amount=entries[-1][1],
-                last_seen=entries[-1][0],
-                first_seen=entries[0][0],
-                months_active=len(months_seen),
-                cumulative=sum(amts, Decimal(0)),
-                sample_count=len(entries),
-            )
-        )
-    subs.sort(key=lambda x: x.cumulative, reverse=True)
-    return subs
-
-
-async def fx_by_currency(s: AsyncSession, *, since: date | None = None) -> list[FxByCurrency]:
-    rows = (
-        await s.execute(
-            select(Transaction.date, Transaction.amount, Transaction.credit_card_metadata)
-            .join(Account, Transaction.account_id == Account.id)
-            .where(Account.type == "CREDIT")
-        )
-    ).all()
-    agg: dict[str, dict] = defaultdict(lambda: {"n": 0, "orig": Decimal(0), "brl": Decimal(0), "rate_sum": Decimal(0), "rate_n": 0})
-    for d, amt, meta in rows:
-        if since and d < since:
-            continue
-        if not isinstance(meta, dict):
-            continue
-        fx = meta.get("fx")
-        if not fx:
-            continue
-        ccy = fx.get("currency")
-        orig = Decimal(str(fx.get("original_value") or 0))
-        rate_raw = fx.get("rate")
-        if not ccy or orig <= 0:
-            continue
-        bucket = agg[ccy]
-        bucket["n"] += 1
-        bucket["orig"] += orig
-        bucket["brl"] += abs(Decimal(str(amt or 0)))
-        if rate_raw:
-            bucket["rate_sum"] += Decimal(str(rate_raw))
-            bucket["rate_n"] += 1
-    out = []
-    for ccy, v in agg.items():
-        avg_rate = (v["rate_sum"] / v["rate_n"]) if v["rate_n"] else Decimal(0)
-        out.append(
-            FxByCurrency(
-                currency=ccy,
-                n=v["n"],
-                original_total=v["orig"],
-                brl_total=v["brl"],
-                avg_rate=avg_rate.quantize(Decimal("0.0001")),
-            )
-        )
-    out.sort(key=lambda x: x.brl_total, reverse=True)
-    return out
-
-
-async def fx_by_month(s: AsyncSession, *, since: date | None = None) -> list[FxByMonth]:
-    rows = (
-        await s.execute(
-            select(Transaction.date, Transaction.amount, Transaction.credit_card_metadata)
-            .join(Account, Transaction.account_id == Account.id)
-            .where(Account.type == "CREDIT")
-        )
-    ).all()
-    agg: dict[tuple[str, str], dict] = defaultdict(lambda: {"orig": Decimal(0), "brl": Decimal(0), "rate_sum": Decimal(0), "rate_n": 0})
-    for d, amt, meta in rows:
-        if since and d < since:
-            continue
-        if not isinstance(meta, dict):
-            continue
-        fx = meta.get("fx")
-        if not fx:
-            continue
-        ccy = fx.get("currency")
-        if not ccy:
-            continue
-        mk = f"{d.year:04d}-{d.month:02d}"
-        bucket = agg[(mk, ccy)]
-        bucket["orig"] += Decimal(str(fx.get("original_value") or 0))
-        bucket["brl"] += abs(Decimal(str(amt or 0)))
-        rate_raw = fx.get("rate")
-        if rate_raw:
-            bucket["rate_sum"] += Decimal(str(rate_raw))
-            bucket["rate_n"] += 1
-    out = []
-    for (mk, ccy), v in agg.items():
-        avg_rate = (v["rate_sum"] / v["rate_n"]) if v["rate_n"] else Decimal(0)
-        out.append(
-            FxByMonth(
-                month=mk,
-                currency=ccy,
-                original_total=v["orig"],
-                brl_total=v["brl"],
-                avg_rate=avg_rate.quantize(Decimal("0.0001")),
-            )
-        )
-    out.sort(key=lambda x: (x.month, x.currency))
-    return out
-
-
-@dataclass(slots=True)
-class WaterfallStep:
-    label: str
-    delta: Decimal
-    kind: str
-    mega: str | None = None
 
 
 @dataclass(slots=True)
@@ -257,35 +63,6 @@ class Mover:
 
 
 @dataclass(slots=True)
-class DailySpend:
-    day: date
-    spend: Decimal
-    income: Decimal
-    n: int
-
-
-@dataclass(slots=True)
-class MerchantProfile:
-    merchant: str
-    total: Decimal
-    n: int
-    first_seen: date
-    last_seen: date
-    avg_amount: Decimal
-    monthly_avg: Decimal
-    last_30d: Decimal
-
-
-@dataclass(slots=True)
-class Anomaly:
-    month: str
-    mega: str
-    amount: Decimal
-    baseline: Decimal
-    z_score: float
-
-
-@dataclass(slots=True)
 class SavingsPoint:
     month: str
     income: Decimal
@@ -294,65 +71,8 @@ class SavingsPoint:
     rate: float
 
 
-@dataclass(slots=True)
-class IncomeMix:
-    mega: str
-    category: str
-    total: Decimal
-    pct: float
-    n: int
-
-
-@dataclass(slots=True)
-class BudgetProgress:
-    budget_id: int
-    mega: str
-    category: str | None
-    target: Decimal
-    spent: Decimal
-    remaining: Decimal
-    pct: float
-    currency: str
-    status: str
-
-
 def _apply_filter_tx(stmt, f: Filter, join_account: bool = True):
     return f.apply_to_tx(stmt, join_account=join_account)
-
-
-def _is_internal_flag():
-    return sqlfunc.coalesce(Transaction.raw["is_internal"].as_boolean(), False) == True  # noqa: E712
-
-
-def _is_sweep_flag():
-    return sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == True  # noqa: E712
-
-
-async def cashflow_waterfall(s: AsyncSession, f: Filter) -> list[WaterfallStep]:
-    inc_q = (
-        select(Transaction.mega, sqlfunc.sum(Transaction.amount))
-        .group_by(Transaction.mega)
-    )
-    inc_q = _apply_filter_tx(inc_q, f).where(income_cond())
-    out_q = (
-        select(Transaction.mega, sqlfunc.sum(spend_amount_abs()))
-        .group_by(Transaction.mega)
-    )
-    out_q = _apply_filter_tx(out_q, f).where(spend_cond())
-    inc_rows = (await s.execute(inc_q)).all()
-    out_rows = (await s.execute(out_q)).all()
-    steps: list[WaterfallStep] = []
-    inc_sorted = sorted([(m or "renda", Decimal(str(v or 0))) for m, v in inc_rows], key=lambda x: -x[1])
-    for mega, v in inc_sorted:
-        if v <= 0:
-            continue
-        steps.append(WaterfallStep(label=mega, delta=v, kind="income", mega=mega))
-    out_sorted = sorted([(m or "outros", Decimal(str(v or 0))) for m, v in out_rows], key=lambda x: -x[1])
-    for mega, v in out_sorted:
-        if v <= 0:
-            continue
-        steps.append(WaterfallStep(label=mega, delta=-v, kind="spend", mega=mega))
-    return steps
 
 
 async def category_movers(s: AsyncSession, f: Filter, *, top: int = 12) -> list[Mover]:
@@ -394,104 +114,6 @@ async def _spend_by_mega_category(s: AsyncSession, f: Filter, d_from: date | Non
     return {(m or "outros", c or "outros"): Decimal(str(v or 0)) for m, c, v in rows}
 
 
-async def daily_spend_calendar(s: AsyncSession, f: Filter) -> list[DailySpend]:
-    spend_q = (
-        select(Transaction.date, sqlfunc.sum(spend_amount_abs()), sqlfunc.count())
-        .group_by(Transaction.date)
-    )
-    spend_q = _apply_filter_tx(spend_q, f).where(spend_cond())
-    income_q = (
-        select(Transaction.date, sqlfunc.sum(Transaction.amount))
-        .group_by(Transaction.date)
-    )
-    income_q = _apply_filter_tx(income_q, f).where(income_cond())
-    spend_map = {d: (Decimal(str(v or 0)), int(n)) for d, v, n in (await s.execute(spend_q)).all()}
-    income_map = {d: Decimal(str(v or 0)) for d, v in (await s.execute(income_q)).all()}
-    days = sorted(set(spend_map) | set(income_map))
-    return [
-        DailySpend(
-            day=d,
-            spend=spend_map.get(d, (Decimal(0), 0))[0],
-            income=income_map.get(d, Decimal(0)),
-            n=spend_map.get(d, (Decimal(0), 0))[1],
-        )
-        for d in days
-    ]
-
-
-async def merchant_profiles(s: AsyncSession, f: Filter, *, top: int = 50) -> list[MerchantProfile]:
-    q = select(Transaction.date, spend_amount_abs().label("amt"), Transaction.description, Transaction.merchant)
-    q = _apply_filter_tx(q, f).where(spend_cond())
-    rows = (await s.execute(q)).all()
-    bucket: dict[str, list[tuple[date, Decimal]]] = defaultdict(list)
-    for d, amt, desc, mer in rows:
-        name = None
-        if isinstance(mer, dict):
-            name = mer.get("name")
-        if not name:
-            name = (desc or "").strip()
-        if not name:
-            continue
-        bucket[name].append((d, Decimal(str(amt or 0))))
-    today = date.today()
-    profiles = []
-    for name, entries in bucket.items():
-        entries.sort(key=lambda e: e[0])
-        total = sum((a for _, a in entries), Decimal(0))
-        n = len(entries)
-        first = entries[0][0]
-        last = entries[-1][0]
-        avg = (total / Decimal(n)).quantize(Decimal("0.01")) if n else Decimal(0)
-        months_span = max(1, (last.year - first.year) * 12 + (last.month - first.month) + 1)
-        monthly = (total / Decimal(months_span)).quantize(Decimal("0.01"))
-        cutoff = today - timedelta(days=30)
-        last30 = sum((a for d, a in entries if d >= cutoff), Decimal(0))
-        profiles.append(
-            MerchantProfile(
-                merchant=name,
-                total=total,
-                n=n,
-                first_seen=first,
-                last_seen=last,
-                avg_amount=avg,
-                monthly_avg=monthly,
-                last_30d=last30,
-            )
-        )
-    profiles.sort(key=lambda p: p.total, reverse=True)
-    return profiles[:top]
-
-
-async def anomalies_by_mega(s: AsyncSession, f: Filter, *, z_threshold: float = 1.8) -> list[Anomaly]:
-    q = (
-        select(
-            sqlfunc.to_char(Transaction.date, "YYYY-MM").label("mk"),
-            Transaction.mega,
-            sqlfunc.sum(spend_amount_abs()).label("total"),
-        )
-        .group_by("mk", Transaction.mega)
-    )
-    q = _apply_filter_tx(q, f).where(spend_cond())
-    rows = (await s.execute(q)).all()
-    by_mega: dict[str, list[tuple[str, Decimal]]] = defaultdict(list)
-    for mk, mega, total in rows:
-        by_mega[mega or "outros"].append((mk, Decimal(str(total or 0))))
-    out: list[Anomaly] = []
-    for mega, series in by_mega.items():
-        if len(series) < 4:
-            continue
-        amts = [float(v) for _, v in series]
-        mu = statistics.mean(amts)
-        sd = statistics.pstdev(amts) or 1.0
-        baseline_dec = Decimal(str(mu)).quantize(Decimal("0.01"))
-        for mk, v in series:
-            z = (float(v) - mu) / sd
-            if abs(z) >= z_threshold:
-                out.append(Anomaly(month=mk, mega=mega, amount=v, baseline=baseline_dec, z_score=round(z, 2)))
-    out.sort(key=lambda a: (a.month, -abs(a.z_score)), reverse=True)
-    return out
-
-
 async def savings_rate(s: AsyncSession, f: Filter) -> list[SavingsPoint]:
     inc_q = (
         select(
@@ -522,83 +144,6 @@ async def savings_rate(s: AsyncSession, f: Filter) -> list[SavingsPoint]:
         rate = float(saved / income)
         out.append(SavingsPoint(month=mk, income=income, spend=spend, saved=saved, rate=rate))
     return out
-
-
-async def income_mix(s: AsyncSession, f: Filter) -> list[IncomeMix]:
-    q = (
-        select(
-            Transaction.mega,
-            Transaction.category,
-            sqlfunc.sum(Transaction.amount),
-            sqlfunc.count(),
-        )
-        .group_by(Transaction.mega, Transaction.category)
-    )
-    q = _apply_filter_tx(q, f).where(income_cond())
-    rows = (await s.execute(q)).all()
-    total = sum((Decimal(str(v or 0)) for _, _, v, _ in rows), Decimal(0))
-    out = []
-    for mega, cat, v, n in rows:
-        amt = Decimal(str(v or 0))
-        pct = float(amt / total) if total else 0.0
-        out.append(IncomeMix(mega=mega or "renda", category=cat or "outros", total=amt, pct=pct, n=int(n)))
-    out.sort(key=lambda x: x.total, reverse=True)
-    return out
-
-
-async def budget_progress(s: AsyncSession, budgets: list[Budget], f: Filter) -> list[BudgetProgress]:
-    today = date.today()
-    period_from = today.replace(day=1)
-    period_to = today
-    pf = Filter(
-        date_from=period_from,
-        date_to=period_to,
-        preset="custom",
-        accounts=f.accounts,
-        account_types=f.account_types,
-    )
-    q = (
-        select(Transaction.mega, Transaction.category, sqlfunc.sum(spend_amount_abs()))
-        .group_by(Transaction.mega, Transaction.category)
-    )
-    q = _apply_filter_tx(q, pf).where(spend_cond())
-    rows = (await s.execute(q)).all()
-    spend_map: dict[tuple[str, str | None], Decimal] = {}
-    mega_total: dict[str, Decimal] = defaultdict(lambda: Decimal(0))
-    for m, c, v in rows:
-        amt = Decimal(str(v or 0))
-        spend_map[(m or "outros", c)] = spend_map.get((m or "outros", c), Decimal(0)) + amt
-        mega_total[m or "outros"] += amt
-    progress = []
-    for b in budgets:
-        target = Decimal(str(b.amount))
-        if b.category:
-            spent = spend_map.get((b.mega, b.category), Decimal(0))
-        else:
-            spent = mega_total.get(b.mega, Decimal(0))
-        remaining = target - spent
-        pct = float(spent / target) if target else 0.0
-        if pct >= 1.0:
-            status = "over"
-        elif pct >= 0.85:
-            status = "warn"
-        else:
-            status = "ok"
-        progress.append(
-            BudgetProgress(
-                budget_id=b.id,
-                mega=b.mega,
-                category=b.category,
-                target=target,
-                spent=spent,
-                remaining=remaining,
-                pct=pct,
-                currency=b.currency_code,
-                status=status,
-            )
-        )
-    progress.sort(key=lambda p: p.pct, reverse=True)
-    return progress
 
 
 async def net_worth_series(s: AsyncSession) -> list[NetWorthPoint]:

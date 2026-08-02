@@ -18,18 +18,9 @@
   <nav class="primary-nav">
     <a href="/">dashboard</a>
     <a href="/sankey">sankey</a>
-    <a href="/breakdown">breakdown</a>
     <a href="/transactions">transações</a>
-    <a href="/calendar">calendário</a>
-    <a href="/merchants">comerciantes</a>
-    <a href="/subscriptions">assinaturas</a>
-    <a href="/savings">poupança</a>
-    <a href="/income">renda</a>
-    <a href="/anomalies">anomalias</a>
-    <a href="/budgets">orçamentos</a>
-    <a href="/goals">metas</a>
+    <a href="/savings">patrimônio</a>
     <a href="/rules" class="cta">categorias</a>
-    <a href="/analytics">analytics</a>
     {% if authed() %}<a href="/documents">documentos</a>{% endif %}
     {% if not read_only %}<a href="/import">import</a>{% endif %}
   </nav>
@@ -63,7 +54,7 @@
 
 <footer>
   <span>ofin · closed finance · pt-br</span>
-  <span class="kbd-hint">atalhos: <kbd>/</kbd> busca · <kbd>f</kbd> filtros · <kbd>g d</kbd> dashboard · <kbd>g s</kbd> sankey · <kbd>g t</kbd> transações</span>
+  <span class="kbd-hint">atalhos: <kbd>/</kbd> busca · <kbd>f</kbd> filtros · <kbd>g d</kbd> dashboard · <kbd>g s</kbd> sankey · <kbd>g t</kbd> transações · <kbd>g p</kbd> patrimônio</span>
 </footer>
 </body>
 </html>
