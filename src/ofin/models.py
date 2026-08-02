@@ -156,6 +156,14 @@ class CategoryRule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SeedState(Base):
+    __tablename__ = "seed_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version: Mapped[int] = mapped_column(default=1)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class TransactionOverride(Base):
     __tablename__ = "transaction_overrides"
 

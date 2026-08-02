@@ -5,6 +5,8 @@
   <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px;">
     <h2>transações · {{ total }} encontradas <span class="muted">({{ filter.label() }})</span></h2>
     <div>
+      <a class="btn ghost small" href="/transactions?megas=pix_out,transferencia,saque,outros&preset=all&sort=amount">☄ matéria escura</a>
+      <a class="btn ghost small" href="/transactions?{{ sort_toggle_url }}">{{ 'ordenar por data' if sort == 'amount' else 'ordenar por valor' }}</a>
       <a class="btn ghost small" href="/transactions.csv?{{ request.url.query }}">↓ CSV</a>
       <span class="muted small">página {{ (offset // limit) + 1 }} de {{ ((total - 1) // limit) + 1 if total else 1 }}</span>
     </div>

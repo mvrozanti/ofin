@@ -18,7 +18,7 @@ from ..models import (
     TransactionOverride,
     TransactionTag,
 )
-from ..parsers.categorize_engine import bump_cache, classify_tx
+from ..parsers.categorize_engine import apply_rules_to_all
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -405,40 +405,7 @@ async def categorize_tx(
         )
         s.add(rule)
         await s.flush()
-        bump_cache()
-        affected = 0
-        all_rows = (
-            await s.execute(
-                select(Transaction, Account.type)
-                .join(Account, Transaction.account_id == Account.id)
-            )
-        ).all()
-        overrides = set((await s.execute(select(TransactionOverride.tx_id))).scalars().all())
-        for t, acct_type in all_rows:
-            if t.id in overrides:
-                continue
-            cc_meta = t.credit_card_metadata or {}
-            is_intl = bool(cc_meta.get("is_international"))
-            hint = cc_meta.get("category_label")
-            sgn = "credit" if (t.amount or 0) > 0 else "debit"
-            m, c, internal_eng, rid = await classify_tx(
-                s,
-                description=t.description or t.description_raw,
-                account_type=acct_type or "BANK",
-                sign=sgn,
-                is_international=is_intl,
-                fatura_category_hint=hint,
-                tx_id=t.id,
-            )
-            if rid == rule.id:
-                t.mega = m
-                t.category = c
-                t.rule_id = rid
-                raw = dict(t.raw or {})
-                if not raw.get("is_sweep"):
-                    raw["is_internal"] = internal_eng
-                t.raw = raw
-                affected += 1
+        affected, _ = await apply_rules_to_all(s, only_rule_id=rule.id)
         await s.commit()
         return {"ok": True, "mode": "rule", "rule_id": rule.id, "affected": affected}
 

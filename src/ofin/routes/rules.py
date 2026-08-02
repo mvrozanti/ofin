@@ -11,9 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db import session_dep
-from ..models import Account, CategoryRule, Transaction, TransactionOverride
-from ..parsers.categorize_engine import bump_cache, classify_tx
-from ..parsers.common import strip_accents
+from ..models import CategoryRule, Transaction
+from ..parsers.categorize_engine import apply_rules_to_all, bump_cache
 
 router = APIRouter(tags=["rules"])
 
@@ -156,46 +155,7 @@ async def recategorize_all(
     s: AsyncSession = Depends(session_dep),
     force: int = 0,
 ):
-    bump_cache()
-    overrides = set()
-    if not force:
-        overrides = set(
-            (await s.execute(select(TransactionOverride.tx_id))).scalars().all()
-        )
-    rows = (
-        await s.execute(
-            select(Transaction, Account.type)
-            .join(Account, Transaction.account_id == Account.id)
-        )
-    ).all()
-    updated = 0
-    skipped = 0
-    for tx, acct_type in rows:
-        if tx.id in overrides:
-            skipped += 1
-            continue
-        sign = "credit" if (tx.amount or 0) > 0 else "debit"
-        is_intl = False
-        hint = None
-        if tx.credit_card_metadata:
-            is_intl = bool(tx.credit_card_metadata.get("is_international"))
-            hint = tx.credit_card_metadata.get("category_label")
-        mega, cat, is_internal_eng, rule_id = await classify_tx(
-            s,
-            description=tx.description or tx.description_raw,
-            account_type=acct_type or "BANK",
-            sign=sign,
-            is_international=is_intl,
-            fatura_category_hint=hint,
-        )
-        tx.mega = mega
-        tx.category = cat
-        tx.rule_id = rule_id
-        raw = dict(tx.raw or {})
-        if not raw.get("is_sweep"):
-            raw["is_internal"] = is_internal_eng
-        tx.raw = raw
-        updated += 1
+    updated, skipped = await apply_rules_to_all(s, force=bool(force))
     await s.commit()
     return templates.TemplateResponse(
         "rules.html",

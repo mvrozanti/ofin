@@ -14,7 +14,8 @@ from .auth import AuthState, probe
 from .config import settings
 from .db import engine, session
 from .models import Base
-from .parsers.seed_rules import seed_default_rules
+from .parsers.categorize_engine import apply_rules_to_all
+from .parsers.seed_rules import migrate_seed_rules, seed_default_rules
 from .routes import api, budgets, pages, rules
 
 structlog.configure(
@@ -36,6 +37,10 @@ async def lifespan(app: FastAPI):
         n = await seed_default_rules(s)
         if n:
             log.info("seeded_rules", n=n)
+        if await migrate_seed_rules(s):
+            updated, skipped = await apply_rules_to_all(s)
+            await s.commit()
+            log.info("seed_migrated", updated=updated, skipped_overrides=skipped)
     log.info("ofin_started")
     yield
     await auth_mod.aclose()

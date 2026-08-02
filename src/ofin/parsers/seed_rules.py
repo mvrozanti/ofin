@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import CategoryRule
+from ..models import CategoryRule, SeedState
 
 
 # (pattern_type, pattern, account_type, sign, mega, category, is_internal, priority)
@@ -13,8 +13,8 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "apl aplic aut mais", "BANK", None, "internal", "sweep_aplicacao", True, 10),
     ("contains", "rend pago aplic aut mais", "BANK", "credit", "renda", "rendimento_cdb", False, 10),
     ("contains", "saldo aplic aut mais", "BANK", None, "internal", "saldo_cdb", True, 10),
-    ("startswith", "est pix", "BANK", "credit", "internal", "estorno_pix", True, 15),
-    ("startswith", "est on", "BANK", "credit", "internal", "estorno_compra", True, 15),
+    ("startswith", "est pix", "BANK", "credit", "internal", "estorno", True, 15),
+    ("startswith", "est on", "BANK", "credit", "internal", "estorno", True, 15),
     ("startswith", "estorno", "BANK", None, "internal", "estorno", True, 15),
     ("contains", "fatura itau", "BANK", "debit", "internal", "pagamento_cartao", True, 15),
     ("contains", "faturaitau", "BANK", "debit", "internal", "pagamento_cartao", True, 15),
@@ -22,6 +22,7 @@ DEFAULT_RULES: list[tuple] = [
     ("startswith", "itau visa", "BANK", "debit", "internal", "pagamento_cartao", True, 15),
     ("startswith", "tbi", "BANK", None, "internal", "transferencia_propria", True, 15),
     ("startswith", "int itau click", "BANK", None, "internal", "transferencia_propria", True, 15),
+    ("contains", "pix transf marcelo", "BANK", None, "internal", "transferencia_propria", True, 12),
 
     # User-confirmed: rent
     ("startswith", "pag boleto lucia maria", "BANK", "debit", "moradia", "aluguel", False, 20),
@@ -46,7 +47,7 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "terabytesh", "CREDIT", "debit", "compra_online", "eletronicos", False, 30),
 
     # Online shopping
-    ("contains", "magalupay", "BANK", "debit", "compra_online", "magalu", False, 30),
+    ("contains", "magalupay", "BANK", "debit", "pix_out", "gateway_qr", False, 30),
     ("contains", "magazin", None, "debit", "compra_online", "magalu", False, 30),
     ("contains", "alipay", "BANK", "debit", "compra_online", "alipay", False, 30),
     ("contains", "alipay", "CREDIT", "debit", "compra_online", "alipay", False, 30),
@@ -190,24 +191,87 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
+SEED_VERSION = 2
+
+SEED_MIGRATIONS: dict[int, list[tuple]] = {
+    2: [
+        ("add", ("contains", "pix transf marcelo", "BANK", None, "internal", "transferencia_propria", True, 12)),
+        ("update", {"pattern": "magalupay"}, {"mega": "pix_out", "category": "gateway_qr"}),
+        ("update", {"category": "estorno_pix"}, {"category": "estorno"}),
+        ("update", {"category": "estorno_compra"}, {"category": "estorno"}),
+        ("update", {"category": "assinatura_tech"}, {"category": "assinatura"}),
+    ],
+}
+
+
+def _rule_from_tuple(t: tuple) -> CategoryRule:
+    pat_type, pat, acct, sign, mega, cat, internal, priority = t
+    return CategoryRule(
+        pattern_type=pat_type,
+        pattern=pat,
+        account_type=acct,
+        sign=sign,
+        mega=mega,
+        category=cat,
+        is_internal=internal,
+        priority=priority,
+        enabled=True,
+    )
+
+
 async def seed_default_rules(s: AsyncSession) -> int:
     n = (await s.execute(select(func.count()).select_from(CategoryRule))).scalar_one()
     if n > 0:
         return 0
     inserted = 0
-    for pat_type, pat, acct, sign, mega, cat, internal, priority in DEFAULT_RULES:
-        rule = CategoryRule(
-            pattern_type=pat_type,
-            pattern=pat,
-            account_type=acct,
-            sign=sign,
-            mega=mega,
-            category=cat,
-            is_internal=internal,
-            priority=priority,
-            enabled=True,
-        )
-        s.add(rule)
+    for t in DEFAULT_RULES:
+        s.add(_rule_from_tuple(t))
         inserted += 1
+    if await s.get(SeedState, 1) is None:
+        s.add(SeedState(id=1, version=SEED_VERSION))
     await s.commit()
     return inserted
+
+
+async def migrate_seed_rules(s: AsyncSession) -> bool:
+    state = await s.get(SeedState, 1)
+    if state is None:
+        state = SeedState(id=1, version=1)
+        s.add(state)
+    if state.version >= SEED_VERSION:
+        await s.commit()
+        return False
+    changed = False
+    for version in range(state.version + 1, SEED_VERSION + 1):
+        for op in SEED_MIGRATIONS.get(version, []):
+            kind = op[0]
+            if kind == "add":
+                t = op[1]
+                exists_q = select(func.count()).select_from(CategoryRule).where(
+                    CategoryRule.pattern == t[1],
+                    CategoryRule.mega == t[4],
+                    CategoryRule.category == t[5],
+                )
+                if (await s.execute(exists_q)).scalar_one() == 0:
+                    s.add(_rule_from_tuple(t))
+                    changed = True
+            elif kind == "update":
+                match, sets = op[1], op[2]
+                q = select(CategoryRule)
+                for k, v in match.items():
+                    q = q.where(getattr(CategoryRule, k) == v)
+                for rule in (await s.execute(q)).scalars().all():
+                    for k, v in sets.items():
+                        setattr(rule, k, v)
+                    changed = True
+            elif kind == "delete":
+                match = op[1]
+                q = select(CategoryRule)
+                for k, v in match.items():
+                    q = q.where(getattr(CategoryRule, k) == v)
+                for rule in (await s.execute(q)).scalars().all():
+                    await s.delete(rule)
+                    changed = True
+        state.version = version
+    await s.commit()
+    return changed

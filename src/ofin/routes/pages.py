@@ -803,9 +803,13 @@ async def transactions_page(
     s: AsyncSession = Depends(session_dep),
     limit: int = 500,
     offset: int = 0,
+    sort: str = "date",
 ):
     f = Filter.from_request(request)
-    q = select(Transaction).order_by(desc(Transaction.date), desc(Transaction.id))
+    if sort == "amount":
+        q = select(Transaction).order_by(desc(sqlfunc.abs(Transaction.amount)), desc(Transaction.date))
+    else:
+        q = select(Transaction).order_by(desc(Transaction.date), desc(Transaction.id))
     q = f.apply_to_tx(q)
     if not f.include_sweep:
         q = q.where(sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False)  # noqa: E712
@@ -824,6 +828,12 @@ async def transactions_page(
         parts = base_qs + [("offset", str(o))]
         return urlencode(parts)
 
+    from urllib.parse import urlencode as _urlencode
+    sort_toggle_url = _urlencode(
+        [(k, v) for k, v in base_qs if k != "sort"]
+        + ([("sort", "amount")] if sort != "amount" else [])
+    )
+
     prev_url = with_offset(max(offset - limit, 0)) if offset > 0 else None
     next_url = with_offset(offset + limit) if offset + limit < total else None
     return templates.TemplateResponse(
@@ -834,6 +844,8 @@ async def transactions_page(
             "transactions": rows,
             "limit": limit,
             "offset": offset,
+            "sort": sort,
+            "sort_toggle_url": sort_toggle_url,
             "total": total,
             "overrides": overrides,
             "prev_url": prev_url,

@@ -145,7 +145,7 @@ def classify_fatura(merchant: str, category_hint: str | None = None, is_internat
         return "outros"
 
     if _matches(m, SUBSCRIPTIONS_TECH):
-        return "assinatura_tech"
+        return "assinatura"
     if _matches(m, SUBSCRIPTIONS_CONSUMER):
         return "assinatura"
     if _matches(m, DONATIONS):
@@ -205,7 +205,7 @@ def _classify_merchant(desc_norm: str) -> str:
     if _matches(desc_norm, TRANSPORTATION):
         return "transporte"
     if _matches(desc_norm, SUBSCRIPTIONS_TECH):
-        return "assinatura_tech"
+        return "assinatura"
     if _matches(desc_norm, SUBSCRIPTIONS_CONSUMER):
         return "assinatura"
     if _matches(desc_norm, SHOPPING_ONLINE):

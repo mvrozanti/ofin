@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import CategoryRule, TransactionOverride
+from ..models import Account, CategoryRule, Transaction, TransactionOverride
 from .categorize import classify_extrato, classify_fatura
 from .common import strip_accents
 
@@ -131,6 +131,56 @@ async def classify_tx(
     return "outros", "outros", False, None
 
 
+async def apply_rules_to_all(
+    s: AsyncSession,
+    *,
+    only_rule_id: int | None = None,
+    force: bool = False,
+) -> tuple[int, int]:
+    """Reclassify transactions with current rules. Returns (updated, skipped_overrides).
+
+    only_rule_id: only apply where the winning rule is that id (rule-mode path).
+    force: also overwrite override-protected transactions. Caller commits.
+    """
+    bump_cache()
+    overrides: set[str] = set()
+    if not force:
+        overrides = set((await s.execute(select(TransactionOverride.tx_id))).scalars().all())
+    rows = (
+        await s.execute(
+            select(Transaction, Account.type).join(Account, Transaction.account_id == Account.id)
+        )
+    ).all()
+    updated = 0
+    skipped = 0
+    for tx, acct_type in rows:
+        if tx.id in overrides:
+            skipped += 1
+            continue
+        cc_meta = tx.credit_card_metadata or {}
+        sign = "credit" if (tx.amount or 0) > 0 else "debit"
+        mega, cat, is_internal_eng, rule_id = await classify_tx(
+            s,
+            description=tx.description or tx.description_raw,
+            account_type=acct_type or "BANK",
+            sign=sign,
+            is_international=bool(cc_meta.get("is_international")),
+            fatura_category_hint=cc_meta.get("category_label"),
+            tx_id=tx.id if only_rule_id is not None else None,
+        )
+        if only_rule_id is not None and rule_id != only_rule_id:
+            continue
+        tx.mega = mega
+        tx.category = cat
+        tx.rule_id = rule_id
+        raw = dict(tx.raw or {})
+        if not raw.get("is_sweep"):
+            raw["is_internal"] = is_internal_eng
+        tx.raw = raw
+        updated += 1
+    return updated, skipped
+
+
 _LEGACY_MEGA_MAP = {
     "sweep_resgate": "internal",
     "sweep_aplicacao": "internal",
@@ -138,7 +188,6 @@ _LEGACY_MEGA_MAP = {
     "transferencia_propria": "internal",
     "pagamento_cartao": "internal",
     "estorno": "internal",
-    "estorno_pix": "internal",
     "salario": "renda",
     "remuneracao": "renda",
     "rendimento_cdb": "renda",
@@ -158,7 +207,6 @@ _LEGACY_MEGA_MAP = {
     "compra_debito": "compra_loja",
     "compra_online": "compra_online",
     "assinatura": "assinatura",
-    "assinatura_tech": "assinatura",
     "doacao": "doacao",
     "moradia": "moradia",
     "saque": "saque",
