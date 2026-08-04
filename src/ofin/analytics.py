@@ -357,7 +357,6 @@ async def dark_matter(s: AsyncSession, f: Filter) -> tuple[int, Decimal]:
     q = (
         select(sqlfunc.count(), sqlfunc.coalesce(sqlfunc.sum(spend_amount_abs()), 0))
         .select_from(Transaction)
-        .join(Account, Transaction.account_id == Account.id)
         .where(spend_cond())
         .where(or_(Transaction.mega.in_(DARK_MEGAS), Transaction.mega.is_(None)))
     )
