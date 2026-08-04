@@ -30,7 +30,7 @@
   </div>
 </section>
 
-{% if not read_only %}
+{% if can_write() %}
 <h2>registrar snapshot <span class="muted small">saldo de uma fonte externa num dia</span></h2>
 <form method="post" action="/snapshots" class="quickadd">
   <select name="source" required>
@@ -65,7 +65,7 @@
 {% if loans %}
 <h2>empréstimos</h2>
 <div class="tbl-wrap"><table class="grid">
-  <thead><tr><th>pessoa</th><th>direção</th><th>data</th><th class="r">principal</th><th class="r">pago</th><th class="r">em aberto</th><th>status</th>{% if not read_only %}<th></th>{% endif %}</tr></thead>
+  <thead><tr><th>pessoa</th><th>direção</th><th>data</th><th class="r">principal</th><th class="r">pago</th><th class="r">em aberto</th><th>status</th>{% if can_write() %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for loan, paid, outstanding in loans %}
     <tr>
@@ -76,7 +76,7 @@
       <td class="r mono">{{ paid | money }}</td>
       <td class="r mono {{ 'pos' if outstanding <= 0 else 'neg' }}">{{ outstanding | money }}</td>
       <td><span class="badge {{ 'info' if loan.status == 'open' else 'warn' }}">{{ loan.status }}</span></td>
-      {% if not read_only %}
+      {% if can_write() %}
       <td>
         {% if loan.status == 'open' %}
         <form method="post" action="/loans/{{ loan.id }}/payments" style="display:inline-flex; gap:4px;">
@@ -105,7 +105,7 @@
 {% if snapshots %}
 <h2>snapshots</h2>
 <div class="tbl-wrap"><table class="grid">
-  <thead><tr><th>fonte</th><th>ativo</th><th class="r">qtd</th><th class="r">valor</th><th>data</th><th>nota</th>{% if not read_only %}<th></th>{% endif %}</tr></thead>
+  <thead><tr><th>fonte</th><th>ativo</th><th class="r">qtd</th><th class="r">valor</th><th>data</th><th>nota</th>{% if can_write() %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for sn in snapshots %}
     <tr>
@@ -115,7 +115,7 @@
       <td class="r mono">{{ sn.value_brl | money }}</td>
       <td class="mono">{{ sn.taken_at }}</td>
       <td class="muted small">{{ sn.note or '' }}</td>
-      {% if not read_only %}
+      {% if can_write() %}
       <td>
         <form method="post" action="/snapshots/{{ sn.id }}/delete" style="display:inline;">
           <button class="btn ghost small" type="submit">×</button>

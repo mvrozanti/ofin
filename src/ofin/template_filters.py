@@ -66,6 +66,13 @@ def is_authed(ctx) -> bool:
 
 
 @pass_context
+def can_write(ctx) -> bool:
+    from .config import settings
+
+    return (not settings().read_only) or _authed_from(ctx)
+
+
+@pass_context
 def auth_user(ctx):
     req = ctx.get("request")
     if req is None:
@@ -81,4 +88,5 @@ def register(templates) -> None:
     templates.env.filters["mask_text"] = mask_text
     templates.env.globals["authed"] = is_authed
     templates.env.globals["auth_user"] = auth_user
+    templates.env.globals["can_write"] = can_write
     templates.env.globals["mask_pessoa"] = mask_pessoa

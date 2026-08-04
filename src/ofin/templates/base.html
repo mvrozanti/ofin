@@ -6,7 +6,7 @@
   <title>{% block title %}ofin{% endblock %} · ofin</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script>
-    window.OFIN_READ_ONLY = {{ 'true' if read_only else 'false' }};
+    window.OFIN_READ_ONLY = {{ 'false' if can_write() else 'true' }};
     window.OFIN_AUTHED = {{ 'true' if authed() else 'false' }};
   </script>
   <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
@@ -22,7 +22,7 @@
     <a href="/savings">patrimônio</a>
     <a href="/rules" class="cta">categorias</a>
     {% if authed() %}<a href="/documents">documentos</a>{% endif %}
-    {% if not read_only %}<a href="/import">import</a>{% endif %}
+    {% if can_write() %}<a href="/import">import</a>{% endif %}
   </nav>
   <div class="nav-spacer"></div>
   <button class="filter-toggle" @click="filterOpen = !filterOpen" :aria-expanded="filterOpen">
@@ -43,7 +43,7 @@
     <span class="badge info">valores ocultos</span>
     instância pública — só proporções; <a href="/login">entrar pra ver valores reais</a>
   {% endif %}
-  {% if read_only %}<span class="muted">· somente leitura (mutações desabilitadas)</span>{% endif %}
+  {% if not can_write() %}<span class="muted">· somente leitura (entre para editar)</span>{% endif %}
 </div>
 
 <main>

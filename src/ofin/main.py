@@ -50,22 +50,24 @@ app = FastAPI(title="ofin", version="0.2.0", lifespan=lifespan)
 
 
 @app.middleware("http")
+async def read_only_guard(request: Request, call_next):
+    if settings().read_only and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        auth = getattr(request.state, "auth", None)
+        if not (auth and auth.authed):
+            return JSONResponse(
+                {"error": "read_only", "detail": "mutations require authentication on this instance"},
+                status_code=403,
+            )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def auth_probe_mw(request: Request, call_next):
     if request.url.path in ("/healthz", "/readonly") or request.url.path.startswith("/static/"):
         request.state.auth = AuthState()
     else:
         cookie = request.headers.get("cookie", "")
         request.state.auth = await probe(cookie)
-    return await call_next(request)
-
-
-@app.middleware("http")
-async def read_only_guard(request: Request, call_next):
-    if settings().read_only and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-        return JSONResponse(
-            {"error": "read_only", "detail": "this instance is public read-only; mutations disabled"},
-            status_code=403,
-        )
     return await call_next(request)
 
 
