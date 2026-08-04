@@ -49,6 +49,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ofin", version="0.2.0", lifespan=lifespan)
 
 
+_PRIVATE_OPEN_PATHS = ("/healthz", "/login", "/logout")
+
+
+@app.middleware("http")
+async def private_guard(request: Request, call_next):
+    if settings().private:
+        path = request.url.path
+        if not (path in _PRIVATE_OPEN_PATHS or path.startswith("/static/")):
+            auth = getattr(request.state, "auth", None)
+            if not (auth and auth.authed):
+                cfg = settings()
+                target = f"https://{cfg.forwarded_host}{request.url.path}"
+                if request.url.query:
+                    target += "?" + request.url.query
+                url = f"{cfg.auth_portal}/?rd={urllib.parse.quote(target, safe='')}"
+                return RedirectResponse(url, status_code=302)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def read_only_guard(request: Request, call_next):
     if settings().read_only and request.method in {"POST", "PUT", "PATCH", "DELETE"}:

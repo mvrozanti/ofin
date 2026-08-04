@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     log_level: str = "info"
     upload_dir: str = "/var/lib/ofin/uploads"
     read_only: bool = False
+    private: bool = False
     authelia_url: str = "http://authelia:9091"
     authelia_verify_path: str = "/api/authz/forward-auth"
     forwarded_host: str = "ofin.mvr.ac"
