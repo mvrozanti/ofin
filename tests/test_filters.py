@@ -155,3 +155,26 @@ def test_filter_label_known_presets():
     f = Filter(preset="30d")
     assert "30 dias" in f.label()
     assert Filter(preset="all").label() == "tudo"
+
+
+def test_from_request_anchors_default_window_on_stale_data():
+    # newest data is months behind "today" — default window must follow the data
+    anchor = date.today() - timedelta(days=120)
+    f = Filter.from_request(FakeRequest({}), anchor)
+    assert f.date_to == anchor
+    assert f.date_from == anchor - timedelta(days=90)
+
+
+def test_from_request_ignores_future_or_none_anchor():
+    f = Filter.from_request(FakeRequest({}), None)
+    assert f.date_to == date.today()
+    future = date.today() + timedelta(days=30)
+    f2 = Filter.from_request(FakeRequest({}), future)
+    assert f2.date_to == date.today()
+
+
+def test_from_request_explicit_dates_override_anchor():
+    anchor = date.today() - timedelta(days=200)
+    f = Filter.from_request(FakeRequest({"from": "2026-01-01", "to": "2026-01-31"}), anchor)
+    assert f.date_from == date(2026, 1, 1)
+    assert f.date_to == date(2026, 1, 31)

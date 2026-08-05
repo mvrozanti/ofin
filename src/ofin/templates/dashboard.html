@@ -14,15 +14,6 @@
 {% endmacro %}
 
 <section class="kpi-row">
-  <div class="kpi" data-drill="/savings">
-    <div class="lbl">patrimônio total</div>
-    <div class="val mono">{{ pat.total | money }}</div>
-    <div class="sub muted">
-      itaú {{ ((pat.itau_cc or 0) + (pat.itau_cdb or 0)) | money }}
-      {% for sn in pat.snapshots %} · {{ sn.source }} {{ sn.value_brl | money }}{% endfor %}
-      {% if pat.loans_out %} · emprestado {{ pat.loans_out | money }}{% endif %}
-    </div>
-  </div>
   <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK"]}'>
     <div class="lbl">entradas ({{ filter.label() }})</div>
     <div class="val mono pos">{{ cur_in | money }}</div>

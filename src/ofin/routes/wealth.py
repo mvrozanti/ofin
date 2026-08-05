@@ -12,9 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..analytics import (
+    latest_tx_date,
     loan_outstanding_rows,
-    net_worth_series,
-    patrimonio_breakdown,
     savings_rate,
 )
 from ..config import settings
@@ -49,62 +48,26 @@ def _parse_date(raw: str) -> date:
         raise HTTPException(400, "invalid date")
 
 
-async def _patrimonio_series(s: AsyncSession) -> dict:
-    itau = await net_worth_series(s)
-    snaps = (
-        await s.execute(
-            select(BalanceSnapshot.source, BalanceSnapshot.taken_at, BalanceSnapshot.value_brl)
-            .order_by(BalanceSnapshot.taken_at)
-        )
-    ).all()
-    months = {p.month for p in itau}
-    per_source_month: dict[str, dict[str, Decimal]] = {}
-    for src, taken_at, value in snaps:
-        mk = f"{taken_at.year:04d}-{taken_at.month:02d}"
-        months.add(mk)
-        per_source_month.setdefault(src, {})[mk] = per_source_month.get(src, {}).get(mk, Decimal(0)) + Decimal(str(value))
-    axis = sorted(months)
-    itau_map = {p.month: p.total for p in itau}
-    series: dict[str, list[float | None]] = {"itau": []}
-    last_itau: Decimal | None = None
-    for mk in axis:
-        if itau_map.get(mk) is not None:
-            last_itau = itau_map[mk]
-        series["itau"].append(float(last_itau) if last_itau is not None else None)
-    for src, by_month in sorted(per_source_month.items()):
-        vals: list[float | None] = []
-        last: Decimal | None = None
-        for mk in axis:
-            if mk in by_month:
-                last = by_month[mk]
-            vals.append(float(last) if last is not None else None)
-        series[src] = vals
-    return {"months": axis, "series": series}
-
-
 @router.get("/savings", response_class=HTMLResponse)
 async def savings_page(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
+    f = Filter.from_request(request, await latest_tx_date(s))
     series = await savings_rate(s, f)
     json_data = {
         "months": [p.month for p in series],
         "income": [float(p.income) for p in series],
         "spend": [float(p.spend) for p in series],
         "saved": [float(p.saved) for p in series],
-        "rate": [round(p.rate * 100, 2) for p in series],
+        "rate": [round(p.rate * 100, 2) if p.rate is not None else None for p in series],
     }
-    avg_rate = (sum(p.rate for p in series) / len(series)) if series else 0.0
-    avg_monthly_spend = (sum((p.spend for p in series), Decimal(0)) / len(series)) if series else Decimal(0)
+    rated = [p.rate for p in series if p.rate is not None]
+    avg_rate = (sum(rated) / len(rated)) if rated else 0.0
 
-    pat = await patrimonio_breakdown(s)
     loans = await loan_outstanding_rows(s)
     snapshots = (
         await s.execute(
             select(BalanceSnapshot).order_by(BalanceSnapshot.taken_at.desc(), BalanceSnapshot.source)
         )
     ).scalars().all()
-    pat_series = await _patrimonio_series(s)
-    runway_months = (pat.total / avg_monthly_spend) if avg_monthly_spend else None
 
     authed = request.state.auth.authed
     if not authed:
@@ -112,12 +75,6 @@ async def savings_page(request: Request, s: AsyncSession = Depends(session_dep))
         json_data["income"] = [round((v / peak) * 100, 2) for v in json_data["income"]]
         json_data["spend"] = [round((v / peak) * 100, 2) for v in json_data["spend"]]
         json_data["saved"] = [round((v / peak) * 100, 2) for v in json_data["saved"]]
-        flat = [abs(v) for vals in pat_series["series"].values() for v in vals if v is not None]
-        peak_p = max(flat or [1.0])
-        pat_series["series"] = {
-            k: [round((v / peak_p) * 100, 2) if v is not None else None for v in vals]
-            for k, vals in pat_series["series"].items()
-        }
 
     loan_prefill = {
         "person": request.query_params.get("loan_person") or "",
@@ -134,12 +91,8 @@ async def savings_page(request: Request, s: AsyncSession = Depends(session_dep))
             "series": series,
             "json_data": json.dumps(json_data, default=str),
             "avg_rate": avg_rate,
-            "avg_monthly_spend": avg_monthly_spend,
-            "runway_months": runway_months,
-            "pat": pat,
             "loans": loans,
             "snapshots": snapshots,
-            "pat_series_json": json.dumps(pat_series, default=str),
             "loan_prefill": loan_prefill,
             "today": date.today().isoformat(),
         },

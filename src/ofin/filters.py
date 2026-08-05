@@ -72,16 +72,20 @@ class Filter:
     display_currency: str = "BRL"
 
     @classmethod
-    def from_request(cls, request: Request) -> "Filter":
+    def from_request(cls, request: Request, anchor: date | None = None) -> "Filter":
         q = request.query_params
         today = date.today()
+        # Data arrives via monthly statements, so it lags "today" by weeks.
+        # Anchor relative windows on the newest transaction, not the wall clock,
+        # otherwise the default view slides past the data and shows R$0.
+        ref = anchor if (anchor and anchor < today) else today
         preset = q.get("preset") or "90d"
         d_from = _parse_date(q.get("from"))
         d_to = _parse_date(q.get("to"))
         if not d_from and not d_to:
-            d_from, d_to = _resolve_preset(preset, today)
+            d_from, d_to = _resolve_preset(preset, ref)
         elif not d_to:
-            d_to = today
+            d_to = ref
         rule_raw = _split(q.get("rules") or q.get("rule"))
         rule_ids = []
         for r in rule_raw:

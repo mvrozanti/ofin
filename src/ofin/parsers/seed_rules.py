@@ -120,9 +120,9 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "enel", None, "debit", "utilidades", "luz", False, 60),
     ("contains", "eletropaulo", None, "debit", "utilidades", "luz", False, 60),
     ("contains", "sabesp", None, "debit", "utilidades", "agua", False, 60),
-    ("contains", "vivo ", None, "debit", "utilidades", "telefone", False, 60),
-    ("contains", "claro ", None, "debit", "utilidades", "telefone", False, 60),
-    ("contains", "tim ", None, "debit", "utilidades", "telefone", False, 60),
+    ("regex", "\\bvivo\\b", None, "debit", "utilidades", "telefone", False, 60),
+    ("regex", "\\bclaro\\b", None, "debit", "utilidades", "telefone", False, 60),
+    ("regex", "\\btim\\b", None, "debit", "utilidades", "telefone", False, 60),
     ("contains", "da net servicos", "BANK", "debit", "utilidades", "internet", False, 60),
     ("contains", "net servicos", None, "debit", "utilidades", "internet", False, 60),
     ("contains", "mobilepag tit banco", "BANK", "debit", "utilidades", "boleto_app", False, 60),
@@ -191,7 +191,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 3
+SEED_VERSION = 4
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -203,6 +203,11 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
     ],
     3: [
         ("update", {"mega": "financeiro"}, {"mega": "internal", "is_internal": True}),
+    ],
+    4: [
+        ("update", {"pattern": "vivo "}, {"pattern_type": "regex", "pattern": "\\bvivo\\b"}),
+        ("update", {"pattern": "claro "}, {"pattern_type": "regex", "pattern": "\\bclaro\\b"}),
+        ("update", {"pattern": "tim "}, {"pattern_type": "regex", "pattern": "\\btim\\b"}),
     ],
 }
 

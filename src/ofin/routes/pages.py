@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..analytics import (
     category_movers,
     dark_matter,
-    patrimonio_breakdown,
+    latest_tx_date,
 )
 from ..analyzer import accounts as accounts_q
 from ..config import settings
@@ -61,7 +61,7 @@ async def _flow_totals(s: AsyncSession, f: Filter) -> tuple[Decimal, Decimal]:
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
-    f = Filter.from_request(request)
+    f = Filter.from_request(request, await latest_tx_date(s))
 
     cur_in, cur_out = await _flow_totals(s, f)
     prev_from, prev_to = f.comparison_range()
@@ -75,8 +75,6 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
         pf = Filter(date_from=prev_from, date_to=prev_to, preset="custom",
                     accounts=f.accounts, account_types=f.account_types, megas=f.megas)
         prev_in, prev_out = await _flow_totals(s, pf)
-
-    pat = await patrimonio_breakdown(s)
 
     movers = [m for m in await category_movers(s, f, top=10) if abs(m.delta) >= 100][:6]
     authed_dash = request.state.auth.authed
@@ -99,7 +97,6 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
             "saved": cur_in - cur_out,
             "saved_prev": prev_in - prev_out,
             "savings_rate": (float((cur_in - cur_out) / cur_in) if cur_in else 0.0),
-            "pat": pat,
             "movers": movers,
             "accounts": accs,
             "dark_n": dark_n,
@@ -334,7 +331,7 @@ async def sankey_page(
     request: Request,
     s: AsyncSession = Depends(session_dep),
 ):
-    f = Filter.from_request(request)
+    f = Filter.from_request(request, await latest_tx_date(s))
     authed_view = request.state.auth.authed
 
     def _anon_cat(mega, category):
@@ -521,7 +518,7 @@ async def transactions_page(
     offset: int = 0,
     sort: str = "date",
 ):
-    f = Filter.from_request(request)
+    f = Filter.from_request(request, await latest_tx_date(s))
     if sort == "amount":
         q = select(Transaction).order_by(desc(sqlfunc.abs(Transaction.amount)), desc(Transaction.date))
     else:
@@ -574,7 +571,7 @@ async def transactions_page(
 async def transactions_csv(request: Request, s: AsyncSession = Depends(session_dep)):
     if not request.state.auth.authed:
         raise HTTPException(status_code=403, detail="login required")
-    f = Filter.from_request(request)
+    f = Filter.from_request(request, await latest_tx_date(s))
     q = select(Transaction).order_by(desc(Transaction.date))
     q = f.apply_to_tx(q)
     rows = (await s.execute(q)).scalars().all()

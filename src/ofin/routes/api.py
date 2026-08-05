@@ -108,7 +108,8 @@ async def api_sankey(request: Request, s: AsyncSession = Depends(session_dep)) -
     from ..filters import Filter
     from sqlalchemy import func as sqlfunc
     from decimal import Decimal as _D
-    f = Filter.from_request(request)
+    from ..analytics import latest_tx_date
+    f = Filter.from_request(request, await latest_tx_date(s))
     inc_q = (
         select(Transaction.mega, Transaction.category, sqlfunc.sum(Transaction.amount))
         .where(Transaction.amount > 0)
@@ -133,10 +134,13 @@ async def api_sankey(request: Request, s: AsyncSession = Depends(session_dep)) -
     spend_bank = (await s.execute(spend_bank_q)).all()
     spend_credit_q = (
         select(Transaction.mega, Transaction.category, sqlfunc.sum(Transaction.amount))
-        .where(Transaction.amount > 0)
+        .where(Transaction.amount != 0)
         .group_by(Transaction.mega, Transaction.category)
     )
-    spend_credit_q = f.apply_to_tx(spend_credit_q).where(Account.type == "CREDIT")
+    spend_credit_q = f.apply_to_tx(spend_credit_q).where(
+        Account.type == "CREDIT",
+        sqlfunc.coalesce(Transaction.mega, "") != "internal",
+    )
     spend_credit = (await s.execute(spend_credit_q)).all()
 
     authed_api = request.state.auth.authed

@@ -26,3 +26,11 @@ def test_mover_pct_decline():
 def test_mover_delta():
     m = Mover(mega="x", category=None, current=Decimal("200"), previous=Decimal("80"))
     assert m.delta == Decimal("120")
+
+
+def test_month_end_handles_short_and_long_months():
+    from ofin.analytics import _month_end
+    assert _month_end("2026-02") == "2026-02-28"
+    assert _month_end("2026-04") == "2026-04-30"
+    assert _month_end("2026-01") == "2026-01-31"
+    assert _month_end("2024-02") == "2024-02-29"
