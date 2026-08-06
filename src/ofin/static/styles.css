@@ -407,3 +407,7 @@ tr.tx-row { cursor: pointer; }
 tr.tx-row:hover { background: #161b22; }
 tr.tx-row.dark { background: rgba(251, 146, 60, 0.06); }
 .triage-banner { margin: 10px 0 4px; padding: 10px 14px; border-left: 3px solid #fb923c; background: rgba(251,146,60,0.08); border-radius: 6px; font-size: 13px; line-height: 1.5; }
+
+a.kpi { text-decoration: none; color: inherit; }
+a.kpi.kpi-dark { border-color: rgba(251, 146, 60, 0.35); }
+a.kpi.kpi-dark:hover { border-color: #fb923c; }

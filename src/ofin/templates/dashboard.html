@@ -13,30 +13,32 @@
 {% endif %}
 {% endmacro %}
 
+{% set qs = request.url.query %}
+{% set qsep = ('?' ~ qs ~ '&') if qs else '?' %}
 <section class="kpi-row">
-  <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK"]}'>
+  <a class="kpi" href="/transactions{{ qsep }}account_types=BANK">
     <div class="lbl">entradas ({{ filter.label() }})</div>
     <div class="val mono pos">{{ cur_in | money }}</div>
     <div class="sub">{{ delta(cur_in, prev_in) }} <span class="muted">vs {{ prev_in | money }}</span></div>
-  </div>
-  <div class="kpi" data-drill="/transactions" data-filter='{"account_types": ["BANK","CREDIT"]}'>
+  </a>
+  <a class="kpi" href="/transactions{{ qsep }}account_types=BANK,CREDIT">
     <div class="lbl">saídas ({{ filter.label() }})</div>
     <div class="val mono neg">{{ cur_out | money }}</div>
     <div class="sub">{{ delta(cur_out, prev_out, invert=true) }} <span class="muted">vs {{ prev_out | money }}</span></div>
-  </div>
-  <div class="kpi" data-drill="/savings">
+  </a>
+  <a class="kpi" href="/savings">
     <div class="lbl">net / poupança</div>
     <div class="val mono {{ 'pos' if saved >= 0 else 'neg' }}">{{ saved | money }}</div>
     <div class="sub">
       <span>taxa {{ '%.1f%%' % (savings_rate * 100) }}</span>
       {{ delta(saved, saved_prev) }}
     </div>
-  </div>
-  <div class="kpi" data-drill="/transactions" data-filter='{"megas": ["pix_out","transferencia","saque","outros"], "preset": "all", "sort": "amount"}'>
-    <div class="lbl">☄ matéria escura</div>
+  </a>
+  <a class="kpi kpi-dark" href="/transactions?megas=pix_out,transferencia,saque,outros&preset=all&sort=amount">
+    <div class="lbl">☄ matéria escura →</div>
     <div class="val mono {{ 'neg' if dark_n > 0 else 'pos' }}">{{ dark_total | money }}</div>
-    <div class="sub muted">{{ dark_n }} transações sem categoria real{% if dark_n == 0 %} — tudo limpo{% endif %}</div>
-  </div>
+    <div class="sub muted">{{ dark_n }} sem categoria · clique p/ categorizar{% if dark_n == 0 %} — tudo limpo{% endif %}</div>
+  </a>
 </section>
 
 <section>
