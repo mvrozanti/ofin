@@ -34,7 +34,7 @@
     <tbody>
     {% for t in transactions %}
       {% set is_dark = (t.mega or 'outros') in dark_megas %}
-      <tr data-tx-id="{{ t.id }}" class="tx-row{{ ' dark' if is_dark }}">
+      <tr data-tx-id="{{ t.id }}" class="tx-row{{ ' dark' if is_dark }}" @click="$dispatch('ofin-open-tx', '{{ t.id }}')">
         <td @click.stop><input type="checkbox" :checked="has('{{ t.id }}')" @change="toggle('{{ t.id }}')"></td>
         <td class="mono">{{ t.date }}</td>
         <td class="muted small">{{ t.account_id[:8] }}…</td>

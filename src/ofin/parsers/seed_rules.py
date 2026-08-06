@@ -79,9 +79,7 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "edisail", "BANK", None, "pessoas", "Edisail", False, 40),
 
     # Transport
-    ("contains", "uberrides", None, "debit", "transporte", "uber", False, 45),
-    ("contains", "uber *trip", "BANK", "debit", "transporte", "uber", False, 45),
-    ("contains", "on uber", "BANK", "debit", "transporte", "uber", False, 45),
+    ("contains", "uber", None, "debit", "transporte", "uber", False, 45),
     ("contains", "99tax", None, "debit", "transporte", "99taxi", False, 45),
     ("contains", "99app", None, "debit", "transporte", "99taxi", False, 45),
     ("contains", "auto posto", "BANK", "debit", "transporte", "gasolina", False, 45),
@@ -141,12 +139,8 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "rappi", None, "debit", "alimentacao", "delivery", False, 70),
 
     # Food — delivery / restaurant
-    ("contains", "ifd*", None, "debit", "alimentacao", "delivery_ifood", False, 75),
-    ("contains", "ifood *ifd", None, "debit", "alimentacao", "delivery_ifood", False, 75),
-    ("contains", "ifood *ifood", None, "debit", "alimentacao", "delivery_ifood", False, 75),
     ("contains", "ifood club", None, "debit", "assinatura", "ifood_club", False, 50),
-    ("contains", "on ifd", "BANK", "debit", "alimentacao", "delivery_ifood", False, 75),
-    ("contains", "pay -ifood", "BANK", "debit", "alimentacao", "delivery_ifood", False, 75),
+    ("regex", "(^|[^a-z])(ifd|ifood)", None, "debit", "alimentacao", "delivery_ifood", False, 55),
     ("contains", "rshop-pag restaur", "BANK", "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "rscss-pag restaur", "BANK", "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "rsccs-pag", "BANK", "debit", "alimentacao", "restaurante", False, 80),
@@ -180,7 +174,7 @@ DEFAULT_RULES: list[tuple] = [
     ("startswith", "pix qrs", "BANK", "debit", "pix_out", "pix_pagamento", False, 100),
     ("startswith", "pix transf", "BANK", "debit", "pix_out", "pix_pessoa", False, 100),
     ("startswith", "sispag", "BANK", "credit", "renda", "sispag", False, 100),
-    ("startswith", "saque", "BANK", "debit", "saque", "saque", False, 100),
+    ("contains", "saque", "BANK", "debit", "saque", "saque", False, 100),
     ("startswith", "ted", "BANK", None, "transferencia", "ted", False, 100),
     ("startswith", "doc", "BANK", None, "transferencia", "doc", False, 100),
 
@@ -191,7 +185,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 4
+SEED_VERSION = 5
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -208,6 +202,23 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         ("update", {"pattern": "vivo "}, {"pattern_type": "regex", "pattern": "\\bvivo\\b"}),
         ("update", {"pattern": "claro "}, {"pattern_type": "regex", "pattern": "\\bclaro\\b"}),
         ("update", {"pattern": "tim "}, {"pattern_type": "regex", "pattern": "\\btim\\b"}),
+    ],
+    5: [
+        # se tem ifood/ifd no nome, é ifood — uma regra só no lugar dos fragmentos.
+        # (iFood Club continua assinatura via a regra de prioridade 50, que ganha.)
+        ("delete", {"pattern": "ifd*"}),
+        ("delete", {"pattern": "ifood *ifd"}),
+        ("delete", {"pattern": "ifood *ifood"}),
+        ("delete", {"pattern": "on ifd"}),
+        ("delete", {"pattern": "pay -ifood"}),
+        ("add", ("regex", "(^|[^a-z])(ifd|ifood)", None, "debit", "alimentacao", "delivery_ifood", False, 55)),
+        # uber é uber (transporte) — pega PIX/QR e variações que os fragmentos perdiam.
+        ("delete", {"pattern": "uberrides"}),
+        ("delete", {"pattern": "uber *trip"}),
+        ("delete", {"pattern": "on uber"}),
+        ("add", ("contains", "uber", None, "debit", "transporte", "uber", False, 45)),
+        # saque é saque — amplia de startswith p/ contains (pega "saque 24h", "atm saque"…).
+        ("update", {"pattern": "saque"}, {"pattern_type": "contains"}),
     ],
 }
 

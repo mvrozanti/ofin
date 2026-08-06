@@ -201,13 +201,8 @@ function ofinShell() {
     },
 
     handleTxClick(ev) {
-      const t = ev.target.closest('[data-tx-id]');
-      if (t) {
-        if (ev.target.closest('input,button,a,label')) return;
-        ev.preventDefault();
-        this.openDrawer(t.getAttribute('data-tx-id'));
-        return;
-      }
+      // Row → drawer is wired via Alpine (@click $dispatch 'ofin-open-tx');
+      // this document-level handler only covers legacy [data-drill] elements.
       const drill = ev.target.closest('[data-drill]');
       if (drill) {
         ev.preventDefault();
