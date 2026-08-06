@@ -79,7 +79,7 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "edisail", "BANK", None, "pessoas", "Edisail", False, 40),
 
     # Transport
-    ("contains", "uber", None, "debit", "transporte", "uber", False, 45),
+    ("contains", "uber", None, None, "transporte", "uber", False, 45),
     ("contains", "99tax", None, "debit", "transporte", "99taxi", False, 45),
     ("contains", "99app", None, "debit", "transporte", "99taxi", False, 45),
     ("contains", "auto posto", "BANK", "debit", "transporte", "gasolina", False, 45),
@@ -140,7 +140,7 @@ DEFAULT_RULES: list[tuple] = [
 
     # Food — delivery / restaurant
     ("contains", "ifood club", None, "debit", "assinatura", "ifood_club", False, 50),
-    ("regex", "(^|[^a-z])(ifd|ifood)", None, "debit", "alimentacao", "delivery_ifood", False, 55),
+    ("regex", "(^|[^a-z])(ifd|ifood)", None, None, "alimentacao", "delivery_ifood", False, 55),
     ("contains", "rshop-pag restaur", "BANK", "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "rscss-pag restaur", "BANK", "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "rsccs-pag", "BANK", "debit", "alimentacao", "restaurante", False, 80),
@@ -185,7 +185,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 5
+SEED_VERSION = 6
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -219,6 +219,14 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         ("add", ("contains", "uber", None, "debit", "transporte", "uber", False, 45)),
         # saque é saque — amplia de startswith p/ contains (pega "saque 24h", "atm saque"…).
         ("update", {"pattern": "saque"}, {"pattern_type": "contains"}),
+    ],
+    6: [
+        # Merchant rules must be sign-agnostic: on a credit card, spend is a
+        # POSITIVE amount so its sign is "credit", not "debit" — a sign="debit"
+        # rule silently skips every card charge. This is why card iFood/uber
+        # still fell through to the hardcoded "restaurante"/"transporte".
+        ("update", {"pattern": "(^|[^a-z])(ifd|ifood)"}, {"sign": None}),
+        ("update", {"pattern": "uber"}, {"sign": None}),
     ],
 }
 
