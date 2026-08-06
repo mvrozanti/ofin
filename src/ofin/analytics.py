@@ -166,6 +166,48 @@ async def loan_outstanding_rows(s: AsyncSession) -> list[tuple[Loan, Decimal, De
     return out
 
 
+async def sankey_datasets(s: AsyncSession, f: Filter, *, authed: bool) -> tuple[list, list]:
+    """(income_data, spend_data) as (mega, category, positive_value) rows.
+
+    Bank and card spend are merged per category (card refunds net out); the
+    'pessoas' category is masked for anonymous callers.
+    """
+    def mask(mega, cat):
+        c = cat or "outros"
+        return "•••" if (not authed and mega == "pessoas") else c
+
+    inc_q = (
+        select(Transaction.mega, Transaction.category, sqlfunc.sum(Transaction.amount))
+        .where(Transaction.amount > 0)
+        .group_by(Transaction.mega, Transaction.category)
+    )
+    inc_q = f.apply_to_tx(inc_q).where(income_cond())
+    income_agg: dict[tuple[str, str], Decimal] = {}
+    for mega, cat, total in (await s.execute(inc_q)).all():
+        if not total:
+            continue
+        m = mega or "renda"
+        k = (m, mask(m, cat))
+        income_agg[k] = income_agg.get(k, Decimal(0)) + abs(Decimal(str(total)))
+
+    spend_q = (
+        select(Transaction.mega, Transaction.category, sqlfunc.sum(spend_amount_abs()))
+        .group_by(Transaction.mega, Transaction.category)
+    )
+    spend_q = f.apply_to_tx(spend_q).where(spend_cond())
+    spend_agg: dict[tuple[str, str], Decimal] = {}
+    for mega, cat, total in (await s.execute(spend_q)).all():
+        if not total:
+            continue
+        m = mega or "outros"
+        k = (m, mask(m, cat))
+        spend_agg[k] = spend_agg.get(k, Decimal(0)) + Decimal(str(total))
+
+    income_data = [(m, c, v) for (m, c), v in income_agg.items() if v > 0]
+    spend_data = [(m, c, v) for (m, c), v in spend_agg.items() if v > 0]
+    return income_data, spend_data
+
+
 DARK_MEGAS = ("pix_out", "transferencia", "saque", "outros")
 
 

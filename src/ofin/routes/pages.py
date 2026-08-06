@@ -13,16 +13,19 @@ from sqlalchemy import case, desc, func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..analytics import (
+    DARK_MEGAS,
     category_movers,
     dark_matter,
     latest_tx_date,
+    sankey_datasets,
 )
+from ..sankey import build_sankey, pretty_cat, pretty_mega
 from ..analyzer import accounts as accounts_q
 from ..config import settings
 from ..db import session_dep
 from ..filters import Filter
 from ..import_pdfs import import_pdf
-from ..models import Account, Document, ParseWarning, Transaction, TransactionOverride
+from ..models import Document, ParseWarning, Transaction, TransactionOverride
 
 router = APIRouter()
 
@@ -39,13 +42,6 @@ templates.env.globals["read_only"] = settings().read_only
 
 def _money(v) -> str:
     return fmt_money(v)
-
-
-def _is_not_internal_or_sweep():
-    return (
-        sqlfunc.coalesce(Transaction.raw["is_sweep"].as_boolean(), False) == False,  # noqa: E712
-        sqlfunc.coalesce(Transaction.mega, "") != "internal",
-    )
 
 
 async def _flow_totals(s: AsyncSession, f: Filter) -> tuple[Decimal, Decimal]:
@@ -332,12 +328,7 @@ async def sankey_page(
     s: AsyncSession = Depends(session_dep),
 ):
     f = Filter.from_request(request, await latest_tx_date(s))
-    authed_view = request.state.auth.authed
-
-    def _anon_cat(mega, category):
-        if not authed_view and mega == "pessoas":
-            return "•••"
-        return category
+    authed = request.state.auth.authed
 
     bounds = (await s.execute(select(sqlfunc.min(Transaction.date), sqlfunc.max(Transaction.date)))).one()
     min_date, max_date = bounds[0], bounds[1]
@@ -351,146 +342,25 @@ async def sankey_page(
                 m = 1
                 y += 1
 
-    inc_q = (
-        select(Transaction.mega, Transaction.category, sqlfunc.sum(Transaction.amount))
-        .where(Transaction.amount > 0)
-        .group_by(Transaction.mega, Transaction.category)
-    )
-    inc_q = f.apply_to_tx(inc_q).where(
-        Account.type == "BANK",
-        *_is_not_internal_or_sweep(),
-    )
-    incomes = (await s.execute(inc_q)).all()
-
-    spend_bank_q = (
-        select(Transaction.mega, Transaction.category, sqlfunc.sum(-Transaction.amount))
-        .where(Transaction.amount < 0)
-        .group_by(Transaction.mega, Transaction.category)
-    )
-    spend_bank_q = f.apply_to_tx(spend_bank_q).where(
-        Account.type == "BANK",
-        *_is_not_internal_or_sweep(),
-    )
-    spend_bank = (await s.execute(spend_bank_q)).all()
-
-    spend_credit_q = (
-        select(Transaction.mega, Transaction.category, sqlfunc.sum(Transaction.amount))
-        .where(Transaction.amount > 0)
-        .group_by(Transaction.mega, Transaction.category)
-    )
-    spend_credit_q = f.apply_to_tx(spend_credit_q).where(Account.type == "CREDIT")
-    spend_credit = (await s.execute(spend_credit_q)).all()
-
-    def _collapse(rows):
-        agg: dict[tuple[str, str], Decimal] = {}
-        for mega, cat, total in rows:
-            if not total:
-                continue
-            m = mega or "outros"
-            c = _anon_cat(m, cat or "outros")
-            agg[(m, c)] = agg.get((m, c), Decimal(0)) + abs(Decimal(str(total)))
-        return [(m, c, v) for (m, c), v in agg.items()]
-
-    income_data = _collapse((mega or "renda", cat, total) for mega, cat, total in incomes)
-    income_data.sort(key=lambda x: x[2], reverse=True)
-    spend_bank_data = _collapse(spend_bank)
-    spend_credit_data = _collapse(spend_credit)
+    income_data, spend_data = await sankey_datasets(s, f, authed=authed)
+    sankey = build_sankey(income_data, spend_data, authed=authed)
 
     total_income = sum((v for _, _, v in income_data), Decimal(0))
-    total_spend_bank = sum((v for _, _, v in spend_bank_data), Decimal(0))
-    total_spend_credit = sum((v for _, _, v in spend_credit_data), Decimal(0))
-    total_spend = total_spend_bank + total_spend_credit
+    total_spend = sum((v for _, _, v in spend_data), Decimal(0))
     net = total_income - total_spend
 
-    nodes: list[dict] = []
-    seen: set[str] = set()
-
-    def add(name):
-        if name not in seen:
-            nodes.append({"name": name})
-            seen.add(name)
-
-    add("CC Itaú")
-    if total_spend_credit > 0:
-        add("Cartão Platinum")
-
-    income_megas_sum: dict[str, Decimal] = {}
-    for mega, cat, v in income_data:
-        income_megas_sum[mega] = income_megas_sum.get(mega, Decimal(0)) + v
-    for mega in income_megas_sum:
-        add(f"renda:{mega}")
-    for mega, cat, v in income_data:
-        add(f"in:{mega}/{cat}")
-
-    bank_megas_sum: dict[str, Decimal] = {}
-    for mega, cat, v in spend_bank_data:
-        bank_megas_sum[mega] = bank_megas_sum.get(mega, Decimal(0)) + v
-    for mega in bank_megas_sum:
-        add(f"out:{mega}")
-    for mega, cat, v in spend_bank_data:
-        add(f"sub:{mega}/{cat}")
-
-    card_megas_sum: dict[str, Decimal] = {}
-    for mega, cat, v in spend_credit_data:
-        card_megas_sum[mega] = card_megas_sum.get(mega, Decimal(0)) + v
-    for mega in card_megas_sum:
-        add(f"card:{mega}")
-    for mega, cat, v in spend_credit_data:
-        add(f"csub:{mega}/{cat}")
-
-    links: list[dict] = []
-    for mega, cat, v in income_data:
-        if v > 0:
-            links.append({"source": f"in:{mega}/{cat}", "target": f"renda:{mega}", "value": float(v), "mega": mega, "category": cat, "side": "income"})
-    for mega, total in income_megas_sum.items():
-        if total > 0:
-            links.append({"source": f"renda:{mega}", "target": "CC Itaú", "value": float(total), "mega": mega, "side": "income"})
-    for mega, total in bank_megas_sum.items():
-        if total > 0:
-            links.append({"source": "CC Itaú", "target": f"out:{mega}", "value": float(total), "mega": mega, "side": "bank"})
-    for mega, cat, v in spend_bank_data:
-        if v > 0:
-            links.append({"source": f"out:{mega}", "target": f"sub:{mega}/{cat}", "value": float(v), "mega": mega, "category": cat, "side": "bank"})
-    if total_spend_credit > 0:
-        links.append({"source": "CC Itaú", "target": "Cartão Platinum", "value": float(total_spend_credit), "side": "card"})
-    for mega, total in card_megas_sum.items():
-        if total > 0:
-            links.append({"source": "Cartão Platinum", "target": f"card:{mega}", "value": float(total), "mega": mega, "side": "card"})
-    for mega, cat, v in spend_credit_data:
-        if v > 0:
-            links.append({"source": f"card:{mega}", "target": f"csub:{mega}/{cat}", "value": float(v), "mega": mega, "category": cat, "side": "card"})
-
-    sankey = {"nodes": nodes, "links": links}
-
-    income_cats_view = []
-    for mega, cat, v in income_data:
-        income_cats_view.append({"mega": mega, "category": cat, "name": f"{mega} / {cat}", "value": v, "pct": (float(v) / float(total_income)) if total_income else 0})
-    spend_cats_total = []
-    for mega, cat, v in spend_bank_data:
-        spend_cats_total.append((mega, cat, "cc", v))
-    for mega, cat, v in spend_credit_data:
-        spend_cats_total.append((mega, cat, "cartão", v))
-    spend_cats_total.sort(key=lambda x: x[3], reverse=True)
-    spend_cats_view = [
-        {
-            "mega": mega,
-            "category": cat,
-            "src": src,
-            "name": f"{mega} / {cat} ({src})",
-            "value": v,
-            "pct_spend": (float(v) / float(total_spend)) if total_spend else 0,
-            "pct_income": (float(v) / float(total_income)) if total_income else 0,
-        }
-        for mega, cat, src, v in spend_cats_total
+    income_cats_view = [
+        {"mega": mega, "category": cat, "name": pretty_cat(mega, cat), "value": v,
+         "pct": (float(v) / float(total_income)) if total_income else 0}
+        for mega, cat, v in sorted(income_data, key=lambda x: x[2], reverse=True)
     ]
-
-    authed = request.state.auth.authed
-    if not authed:
-        from ..masking import proportions
-        link_vals = [lk["value"] for lk in sankey["links"]]
-        scaled = proportions(link_vals, total=100.0)
-        for lk, v in zip(sankey["links"], scaled):
-            lk["value"] = v
+    spend_cats_view = [
+        {"mega": mega, "category": cat, "mega_label": pretty_mega(mega), "cat_label": pretty_cat(mega, cat),
+         "value": v,
+         "pct_spend": (float(v) / float(total_spend)) if total_spend else 0,
+         "pct_income": (float(v) / float(total_income)) if total_income else 0}
+        for mega, cat, v in sorted(spend_data, key=lambda x: x[2], reverse=True)
+    ]
 
     return templates.TemplateResponse(
         "sankey.html",
@@ -549,6 +419,9 @@ async def transactions_page(
 
     prev_url = with_offset(max(offset - limit, 0)) if offset > 0 else None
     next_url = with_offset(offset + limit) if offset + limit < total else None
+    triage = bool(set(f.megas) & set(DARK_MEGAS)) or (not f.megas and any(
+        (r.mega or "outros") in DARK_MEGAS for r in rows
+    ))
     return templates.TemplateResponse(
         "transactions.html",
         {
@@ -563,6 +436,8 @@ async def transactions_page(
             "overrides": overrides,
             "prev_url": prev_url,
             "next_url": next_url,
+            "triage": triage,
+            "dark_megas": list(DARK_MEGAS),
         },
     )
 

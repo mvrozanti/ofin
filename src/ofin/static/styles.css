@@ -402,3 +402,8 @@ body.read-only .bulk-bar { opacity: 0.5; pointer-events: none; }
 
 .quickadd { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 18px; }
 .quickadd input, .quickadd select { background: var(--panel, #12161c); color: inherit; border: 1px solid #1f242c; border-radius: 6px; padding: 6px 8px; font: inherit; }
+
+tr.tx-row { cursor: pointer; }
+tr.tx-row:hover { background: #161b22; }
+tr.tx-row.dark { background: rgba(251, 146, 60, 0.06); }
+.triage-banner { margin: 10px 0 4px; padding: 10px 14px; border-left: 3px solid #fb923c; background: rgba(251,146,60,0.08); border-radius: 6px; font-size: 13px; line-height: 1.5; }

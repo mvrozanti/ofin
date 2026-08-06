@@ -51,6 +51,12 @@ def _parse_date(raw: str) -> date:
 @router.get("/savings", response_class=HTMLResponse)
 async def savings_page(request: Request, s: AsyncSession = Depends(session_dep)):
     f = Filter.from_request(request, await latest_tx_date(s))
+    # The savings trend is historical — default to the full history, not the
+    # dashboard's rolling window, unless the user explicitly picks a range.
+    if not any(request.query_params.get(k) for k in ("preset", "from", "to")):
+        f.date_from = None
+        f.date_to = None
+        f.preset = "all"
     series = await savings_rate(s, f)
     json_data = {
         "months": [p.month for p in series],

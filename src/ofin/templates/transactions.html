@@ -12,6 +12,14 @@
     </div>
   </div>
 
+  {% if triage and can_write() %}
+  <div class="triage-banner">
+    <b>modo faxina.</b> estas ainda não têm categoria de verdade — é aqui que você as ilumina.
+    Clique numa linha pra categorizar (abre o painel), ou marque várias e use <b>aplicar a todas</b> abaixo.
+    No painel, criar uma <b>regra</b> re-categoriza todas as parecidas de uma vez.
+  </div>
+  {% endif %}
+
   <div class="tbl-wrap"><table class="grid">
     <thead><tr>
       <th style="width:36px;"><input type="checkbox" @click="toggleAll([{% for t in transactions %}'{{ t.id }}'{% if not loop.last %},{% endif %}{% endfor %}])"></th>
@@ -25,13 +33,14 @@
     </tr></thead>
     <tbody>
     {% for t in transactions %}
-      <tr data-tx-id="{{ t.id }}">
+      {% set is_dark = (t.mega or 'outros') in dark_megas %}
+      <tr data-tx-id="{{ t.id }}" class="tx-row{{ ' dark' if is_dark }}">
         <td @click.stop><input type="checkbox" :checked="has('{{ t.id }}')" @change="toggle('{{ t.id }}')"></td>
         <td class="mono">{{ t.date }}</td>
         <td class="muted small">{{ t.account_id[:8] }}…</td>
         <td>{{ (t.description or t.description_raw) | mask_text }}</td>
         <td>
-          {% if t.mega %}<span class="badge info">{{ t.mega }}</span>{% else %}<span class="muted">—</span>{% endif %}
+          {% if t.mega %}<span class="badge {{ 'warn' if is_dark else 'info' }}">{{ t.mega }}</span>{% else %}<span class="badge warn">sem categoria</span>{% endif %}
         </td>
         <td>{{ mask_pessoa(t.mega, t.category or '—') }}</td>
         <td class="r mono {% if t.amount and t.amount > 0 %}pos{% else %}neg{% endif %}">{{ t.amount | money }}</td>
