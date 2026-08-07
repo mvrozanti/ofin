@@ -68,26 +68,12 @@ async def savings_page(request: Request, s: AsyncSession = Depends(session_dep))
     rated = [p.rate for p in series if p.rate is not None]
     avg_rate = (sum(rated) / len(rated)) if rated else 0.0
 
-    loans = await loan_outstanding_rows(s)
-    snapshots = (
-        await s.execute(
-            select(BalanceSnapshot).order_by(BalanceSnapshot.taken_at.desc(), BalanceSnapshot.source)
-        )
-    ).scalars().all()
-
     authed = request.state.auth.authed
     if not authed:
         peak = max([abs(v) for v in json_data["income"] + json_data["spend"] if v is not None] or [1.0])
         json_data["income"] = [round((v / peak) * 100, 2) for v in json_data["income"]]
         json_data["spend"] = [round((v / peak) * 100, 2) for v in json_data["spend"]]
         json_data["saved"] = [round((v / peak) * 100, 2) for v in json_data["saved"]]
-
-    loan_prefill = {
-        "person": request.query_params.get("loan_person") or "",
-        "amount": request.query_params.get("loan_amount") or "",
-        "date": request.query_params.get("loan_date") or "",
-        "tx_id": request.query_params.get("loan_tx") or "",
-    }
 
     return templates.TemplateResponse(
         "savings.html",
@@ -97,10 +83,6 @@ async def savings_page(request: Request, s: AsyncSession = Depends(session_dep))
             "series": series,
             "json_data": json.dumps(json_data, default=str),
             "avg_rate": avg_rate,
-            "loans": loans,
-            "snapshots": snapshots,
-            "loan_prefill": loan_prefill,
-            "today": date.today().isoformat(),
         },
     )
 
