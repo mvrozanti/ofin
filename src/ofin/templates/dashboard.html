@@ -42,34 +42,6 @@
 </section>
 
 <section>
-  <h2>o que mudou · maiores movers vs período anterior</h2>
-  {% if movers %}
-    <div class="movers">
-      {% for m in movers %}
-        <div class="mover" data-drill="/transactions" data-filter='{"megas": ["{{ m.mega }}"], "categories": ["{{ m.category }}"]}'>
-          <div class="name">
-            <strong>{{ m.mega }}</strong> · {{ m.category }}
-          </div>
-          <div class="vals">
-            <div class="mono">{{ m.current | money }} ← {{ m.previous | money }}</div>
-            <div>
-              {% set p = (m.pct * 100) %}
-              <span class="delta {{ 'up' if m.delta > 0 else ('down' if m.delta < 0 else 'flat') }}">
-                {{ '▲' if m.delta > 0 else ('▼' if m.delta < 0 else '·') }}
-                {% if m.previous == 0 %}novo{% else %}{{ '%.0f%%' % p }}{% endif %}
-              </span>
-              <span class="mono muted">{{ m.delta | money }}</span>
-            </div>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <p class="muted">sem comparação possível.</p>
-  {% endif %}
-</section>
-
-<section>
   <h2>contas</h2>
   <div class="tbl-wrap"><table class="grid">
     <thead><tr><th>nome</th><th>tipo</th><th>subtipo</th><th class="r">saldo</th></tr></thead>

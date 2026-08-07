@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..analytics import (
     DARK_MEGAS,
-    category_movers,
     dark_matter,
     latest_tx_date,
     sankey_datasets,
@@ -70,12 +69,6 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
                     accounts=f.accounts, account_types=f.account_types, megas=f.megas)
         prev_in, prev_out = await _flow_totals(s, pf)
 
-    movers = [m for m in await category_movers(s, f, top=10) if abs(m.delta) >= 100][:6]
-    authed_dash = request.state.auth.authed
-    if not authed_dash:
-        for m in movers:
-            if m.mega == "pessoas":
-                m.category = "•••"
     accs = await accounts_q(s)
     dark_n, dark_total = await dark_matter(s, f)
 
@@ -91,7 +84,6 @@ async def dashboard(request: Request, s: AsyncSession = Depends(session_dep)):
             "saved": cur_in - cur_out,
             "saved_prev": prev_in - prev_out,
             "savings_rate": (float((cur_in - cur_out) / cur_in) if cur_in else 0.0),
-            "movers": movers,
             "accounts": accs,
             "dark_n": dark_n,
             "dark_total": dark_total,
