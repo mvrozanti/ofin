@@ -89,12 +89,21 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "estacion", None, "debit", "transporte", "estacionamento", False, 45),
 
     # Subscriptions (CREDIT card)
-    ("contains", "claude.ai", "CREDIT", "debit", "assinatura", "claude_ai", False, 50),
-    ("contains", "anthrop", "CREDIT", "debit", "assinatura", "anthropic", False, 50),
-    ("contains", "cursor,", "CREDIT", "debit", "assinatura", "cursor", False, 50),
-    ("contains", "cursor usage", "CREDIT", "debit", "assinatura", "cursor", False, 50),
-    ("contains", "chatgpt", "CREDIT", "debit", "assinatura", "chatgpt", False, 50),
-    ("contains", "chatgp", "CREDIT", "debit", "assinatura", "chatgpt", False, 50),
+    # IA — tudo junto sob assinatura/ia, sign-agnostic (cartão lança como "credit").
+    ("contains", "chatgp", None, None, "assinatura", "ia", False, 48),
+    ("contains", "openai", None, None, "assinatura", "ia", False, 48),
+    ("contains", "anthrop", None, None, "assinatura", "ia", False, 48),
+    ("contains", "claude.ai", None, None, "assinatura", "ia", False, 48),
+    ("contains", "cursor", None, None, "assinatura", "ia", False, 48),
+    ("contains", "perplexity", None, None, "assinatura", "ia", False, 48),
+    # lojas de eletrônicos + farmácia + barbearia (chegam como PIX QRS, sem sinal fixo)
+    ("contains", "kabum", None, None, "compra_online", "eletronicos", False, 40),
+    ("contains", "fast shop", None, None, "compra_online", "eletronicos", False, 40),
+    ("contains", "pharma", None, None, "saude", "farmacia", False, 40),
+    ("contains", "black zone", None, None, "compra_loja", "barbearia", False, 40),
+    ("contains", "posto", None, None, "transporte", "gasolina", False, 40),
+    # transferência pra minha própria conta (BTG)
+    ("contains", "marcelo vir", None, None, "internal", "transferencia_propria", True, 12),
     ("contains", "youtub", None, "debit", "assinatura", "youtube", False, 50),
     ("contains", "namecheap", "CREDIT", "debit", "assinatura", "namecheap", False, 50),
     ("contains", "name-cheap", "CREDIT", "debit", "assinatura", "namecheap", False, 50),
@@ -146,9 +155,11 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "rsccs-pag", "BANK", "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "lanchon", None, "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "boulevard", "BANK", "debit", "alimentacao", "restaurante", False, 80),
-    ("contains", "banca macke", "BANK", "debit", "alimentacao", "banca", False, 80),
-    ("contains", "bancadobent", "BANK", "debit", "alimentacao", "banca", False, 80),
-    ("contains", "banca conso", "BANK", "debit", "alimentacao", "banca", False, 80),
+    ("contains", "banca", None, None, "compra_loja", "cigarro", False, 42),
+    ("contains", "dejailton", None, None, "alimentacao", "restaurante", False, 40),
+    ("contains", "cantinho do", None, None, "alimentacao", "restaurante", False, 40),
+    ("contains", "victor noth", None, None, "alimentacao", "restaurante", False, 40),
+    ("contains", "highlander", None, None, "outros", "outros", False, 40),
     ("contains", "pizzar", None, "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "burger", None, "debit", "alimentacao", "restaurante", False, 80),
     ("contains", "burguer", None, "debit", "alimentacao", "restaurante", False, 80),
@@ -185,7 +196,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 6
+SEED_VERSION = 7
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -227,6 +238,40 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         # still fell through to the hardcoded "restaurante"/"transporte".
         ("update", {"pattern": "(^|[^a-z])(ifd|ifood)"}, {"sign": None}),
         ("update", {"pattern": "uber"}, {"sign": None}),
+    ],
+    7: [
+        # IA: unifica claude/anthropic/chatgpt/cursor sob assinatura/ia e torna
+        # sign-agnostic (os antigos com sign=debit+CREDIT nunca disparavam no cartão).
+        ("delete", {"pattern": "claude.ai"}),
+        ("delete", {"pattern": "anthrop"}),
+        ("delete", {"pattern": "cursor,"}),
+        ("delete", {"pattern": "cursor usage"}),
+        ("delete", {"pattern": "chatgpt"}),
+        ("delete", {"pattern": "chatgp"}),
+        ("add", ("contains", "chatgp", None, None, "assinatura", "ia", False, 48)),
+        ("add", ("contains", "openai", None, None, "assinatura", "ia", False, 48)),
+        ("add", ("contains", "anthrop", None, None, "assinatura", "ia", False, 48)),
+        ("add", ("contains", "claude.ai", None, None, "assinatura", "ia", False, 48)),
+        ("add", ("contains", "cursor", None, None, "assinatura", "ia", False, 48)),
+        ("add", ("contains", "perplexity", None, None, "assinatura", "ia", False, 48)),
+        # merchants confirmados pelo usuário
+        ("add", ("contains", "kabum", None, None, "compra_online", "eletronicos", False, 40)),
+        ("add", ("contains", "fast shop", None, None, "compra_online", "eletronicos", False, 40)),
+        ("add", ("contains", "pharma", None, None, "saude", "farmacia", False, 40)),
+        ("add", ("contains", "black zone", None, None, "compra_loja", "barbearia", False, 40)),
+        ("add", ("contains", "posto", None, None, "transporte", "gasolina", False, 40)),
+        ("add", ("contains", "marcelo vir", None, None, "internal", "transferencia_propria", True, 12)),
+        # banca (jornaleiro) = cigarro — reclassifica os antigos + genérico
+        ("update", {"pattern": "banca macke"}, {"mega": "compra_loja", "category": "cigarro"}),
+        ("update", {"pattern": "bancadobent"}, {"mega": "compra_loja", "category": "cigarro"}),
+        ("update", {"pattern": "banca conso"}, {"mega": "compra_loja", "category": "cigarro"}),
+        ("add", ("contains", "banca", None, None, "compra_loja", "cigarro", False, 42)),
+        # comida
+        ("add", ("contains", "dejailton", None, None, "alimentacao", "restaurante", False, 40)),
+        ("add", ("contains", "cantinho do", None, None, "alimentacao", "restaurante", False, 40)),
+        ("add", ("contains", "victor noth", None, None, "alimentacao", "restaurante", False, 40)),
+        # highlander: não é comida e o usuário não sabe o que é -> volta pro balde de triagem
+        ("add", ("contains", "highlander", None, None, "outros", "outros", False, 40)),
     ],
 }
 
