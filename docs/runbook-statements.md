@@ -12,32 +12,41 @@ transcreve os passos aqui).
 
 ---
 
-## Itaú — extrato (PDF)
+## Itaú — extrato mensal consolidado (PDF)
 
-### Onde conseguir
-- App/site Itaú → conta corrente → extrato mensal em PDF.
+Este é o arquivo que o parser do ofin entende — o **extrato consolidado**,
+NÃO a lista de "últimos lançamentos" da home. Conta: ag 0428 / c/c 17236-5
+(Uniclass, pessoa física).
 
-### Passos
-1. TODO(screenshot): navegação exata no app até "extrato em PDF".
-2. TODO: qual período selecionar (mês fechado anterior).
-3. Salvar como `extrato-YYYY-MM.pdf`.
+### Onde conseguir (site — internet banking PF)
+1. Entrar em https://internetpf5.itau.com.br (bankline / GRIPNET).
+2. Na página inicial ("Esta é sua página inicial"), olhar o box **documentos**
+   no canto **inferior direito** (fica ao lado da aba "comprovantes", logo
+   abaixo de "ocultar informes").
+3. Clicar em **Extrato mensal consolidado**.
+4. Selecionar o mês fechado desejado → baixar o PDF.
 
-### O que anotar
-- Nada manual — o parser extrai transações + saldos CDB.
+No mesmo box **documentos** ficam também:
+- **Fatura de cartão de crédito** → o outro PDF que o ofin importa (ver abaixo).
+- **Informe de rendimentos** → anual, não usado no import.
+
+### O que fazer com o arquivo
+1. Salvar como `extrato-YYYY-MM.pdf`.
+2. Subir em `/import` no ofin.
+3. Conferir avisos em `/documents`. O parser extrai transações + saldos de
+   CDB sozinho — nada de digitação manual.
 
 ---
 
 ## Itaú — fatura do cartão (PDF)
 
 ### Onde conseguir
-- App/site Itaú → cartões → fatura fechada → exportar PDF.
+- Mesmo box **documentos** da home (canto inferior direito) → **Fatura de
+  cartão de crédito** → selecionar a fatura fechada → baixar PDF.
 
-### Passos
-1. TODO(screenshot): navegação até a fatura fechada.
-2. Salvar como `fatura-YYYY-MM.pdf`.
-
-### O que anotar
-- Nada manual.
+### O que fazer com o arquivo
+1. Salvar como `fatura-YYYY-MM.pdf`.
+2. Subir em `/import`; conferir avisos em `/documents`. Nada manual.
 
 ---
 
