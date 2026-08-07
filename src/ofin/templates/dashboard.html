@@ -35,9 +35,9 @@
     </div>
   </a>
   <a class="kpi kpi-dark" href="/transactions?megas=pix_out,transferencia,outros&preset=all&sort=amount">
-    <div class="lbl">☄ gasto sem destino →</div>
+    <div class="lbl">☄ falta categorizar →</div>
     <div class="val mono {{ 'neg' if dark_n > 0 else 'pos' }}">{{ dark_total | money }}</div>
-    <div class="sub muted">{{ dark_n }} com rótulo genérico (pix, transferência, outros) · clique p/ esclarecer{% if dark_n == 0 %} — tudo esclarecido{% endif %}</div>
+    <div class="sub muted">{{ dark_n }} gastos sem dizer pra quê · clique p/ categorizar{% if dark_n == 0 %} — tudo categorizado{% endif %}</div>
   </a>
 </section>
 

@@ -5,7 +5,7 @@
   <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px;">
     <h2>transações · {{ total }} encontradas <span class="muted">({{ filter.label() }})</span></h2>
     <div>
-      <a class="btn ghost small" href="/transactions?megas=pix_out,transferencia,outros&preset=all&sort=amount">☄ gasto sem destino</a>
+      <a class="btn ghost small" href="/transactions?megas=pix_out,transferencia,outros&preset=all&sort=amount">☄ falta categorizar</a>
       <a class="btn ghost small" href="/transactions?{{ sort_toggle_url }}">{{ 'ordenar por data' if sort == 'amount' else 'ordenar por valor' }}</a>
       <a class="btn ghost small" href="/transactions.csv?{{ request.url.query }}">↓ CSV</a>
       <span class="muted small">página {{ (offset // limit) + 1 }} de {{ ((total - 1) // limit) + 1 if total else 1 }}</span>
@@ -14,10 +14,10 @@
 
   {% if triage and can_write() %}
   <div class="triage-banner">
-    <b>modo faxina.</b> estas têm só um rótulo genérico (pix, transferência, outros) — dizem que
-    <i>saiu</i> dinheiro, não <i>para onde</i> foi. Clique numa linha pra dar um destino real
-    (categoria ou <b>regra</b>), ou marque várias e use <b>aplicar a todas</b>.
-    Não é "sem categoria" — é gasto que o app ainda não sabe explicar.
+    <b>modo faxina.</b> a categoria é o <b>pra quê</b> do gasto. estas só têm o tipo
+    (pix, transferência, outros) — falta dizer pra quê foram. Clique numa linha e diga a
+    categoria, ou crie uma <b>regra</b> que conserta todas as parecidas; ou marque várias
+    e use <b>aplicar a todas</b>.
   </div>
   {% endif %}
 
