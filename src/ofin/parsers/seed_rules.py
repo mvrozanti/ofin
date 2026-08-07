@@ -101,6 +101,7 @@ DEFAULT_RULES: list[tuple] = [
     # lojas de eletrônicos + farmácia + barbearia (chegam como PIX QRS, sem sinal fixo)
     ("contains", "kabum", None, None, "compra_online", "eletronicos", False, 40),
     ("contains", "fast shop", None, None, "compra_online", "eletronicos", False, 40),
+    ("contains", "red panda", None, None, "compra_online", "compra_online", False, 40),
     ("contains", "pharma", None, None, "saude", "farmacia", False, 40),
     ("contains", "black zone", None, None, "compra_loja", "barbearia", False, 40),
     ("contains", "posto", None, None, "transporte", "gasolina", False, 40),
@@ -198,7 +199,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 8
+SEED_VERSION = 9
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -280,6 +281,9 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         # comendo ~R$124k de renda que ENTRA. Separa: saída interna, entrada renda.
         ("update", {"pattern": "pix transf marcelo"}, {"sign": "debit"}),
         ("add", ("contains", "pix transf marcelo", "BANK", "credit", "renda", "salario", False, 12)),
+    ],
+    9: [
+        ("add", ("contains", "red panda", None, None, "compra_online", "compra_online", False, 40)),
     ],
 }
 
