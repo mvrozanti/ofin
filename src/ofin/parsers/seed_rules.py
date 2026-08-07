@@ -25,6 +25,15 @@ DEFAULT_RULES: list[tuple] = [
     # "PIX TRANSF MARCELO" = transferência própria (BTG) nas duas direções a partir
     # de abr/2025. Os meses antigos (quando era salário) recebem override renda via SQL.
     ("contains", "pix transf marcelo", "BANK", None, "internal", "transferencia_propria", True, 12),
+    # "TED ...MARCELO V R" que ENTRA = salário (o nome do usuário no depósito).
+    ("contains", "marcelo v r", "BANK", "credit", "renda", "salario", False, 11),
+    ("contains", "bella buarque", None, None, "alimentacao", "padaria", False, 40),
+    ("contains", "food to save", None, None, "alimentacao", "delivery", False, 40),
+    ("contains", "ki sabor", None, None, "alimentacao", "restaurante", False, 40),
+    # Linha de PAGAMENTO dentro da fatura = interno (não é gasto).
+    ("startswith", "pagamento", "CREDIT", None, "internal", "pagamento_fatura", True, 15),
+    ("startswith", "pgto", "CREDIT", None, "internal", "pagamento_fatura", True, 15),
+    ("contains", "deb automatic", "BANK", "debit", "utilidades", "debito_automatico", False, 40),
 
     # User-confirmed: rent
     ("startswith", "pag boleto lucia maria", "BANK", "debit", "moradia", "aluguel", False, 20),
@@ -199,7 +208,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 10
+SEED_VERSION = 11
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -293,6 +302,19 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         ("update", {"pattern": "pix transf marcelo", "mega": "internal"}, {"sign": None}),
         # "Leds" não é pessoa — é equipamento (grow)
         ("update", {"category": "Leds"}, {"mega": "compra_online", "category": "equipamento"}),
+    ],
+    11: [
+        # TED MARCELO V R (nome do usuário) que ENTRA = salário, em qualquer agência.
+        ("add", ("contains", "marcelo v r", "BANK", "credit", "renda", "salario", False, 11)),
+        ("add", ("contains", "bella buarque", None, None, "alimentacao", "padaria", False, 40)),
+        ("add", ("contains", "food to save", None, None, "alimentacao", "delivery", False, 40)),
+        ("add", ("contains", "ki sabor", None, None, "alimentacao", "restaurante", False, 40)),
+        # Linha de PAGAMENTO dentro da fatura (kind=payment) = interno, NÃO é gasto.
+        # Estava sendo contada como gasto negativo e sub-contava o cartão.
+        ("add", ("startswith", "pagamento", "CREDIT", None, "internal", "pagamento_fatura", True, 15)),
+        ("add", ("startswith", "pgto", "CREDIT", None, "internal", "pagamento_fatura", True, 15)),
+        # DEB AUTOMATIC na conta corrente = conta fixa (débito automático).
+        ("add", ("contains", "deb automatic", "BANK", "debit", "utilidades", "debito_automatico", False, 40)),
     ],
 }
 

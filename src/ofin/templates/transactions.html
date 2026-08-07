@@ -21,9 +21,13 @@
   </div>
   {% endif %}
 
+  <p class="muted small" style="margin:2px 0 8px;">
+    👆 clique numa linha para categorizar · ☑ marque as caixas para categorizar <b>várias de uma vez</b>
+  </p>
+
   <div class="tbl-wrap"><table class="grid">
     <thead><tr>
-      <th style="width:36px;"><input type="checkbox" @click="toggleAll([{% for t in transactions %}'{{ t.id }}'{% if not loop.last %},{% endif %}{% endfor %}])"></th>
+      <th style="width:36px;" title="marcar todas"><input type="checkbox" @click="toggleAll([{% for t in transactions %}'{{ t.id }}'{% if not loop.last %},{% endif %}{% endfor %}])"></th>
       <th>data</th>
       <th>conta</th>
       <th>descrição</th>
@@ -38,7 +42,7 @@
       <tr data-tx-id="{{ t.id }}" class="tx-row{{ ' dark' if is_dark }}" @click="$dispatch('ofin-open-tx', '{{ t.id }}')">
         <td @click.stop><input type="checkbox" :checked="has('{{ t.id }}')" @change="toggle('{{ t.id }}')"></td>
         <td class="mono">{{ t.date }}</td>
-        <td class="muted small">{{ t.account_id[:8] }}…</td>
+        <td class="muted small">{{ 'cartão' if 'credit' in t.account_id else 'conta' }}</td>
         <td>{{ (t.description or t.description_raw) | mask_text }}</td>
         <td>
           {% if t.mega %}<span class="badge {{ 'warn' if is_dark else 'info' }}">{{ t.mega }}</span>{% else %}<span class="badge warn">sem categoria</span>{% endif %}
