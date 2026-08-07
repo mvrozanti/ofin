@@ -208,7 +208,10 @@ async def sankey_datasets(s: AsyncSession, f: Filter, *, authed: bool) -> tuple[
     return income_data, spend_data
 
 
-DARK_MEGAS = ("pix_out", "transferencia", "saque", "outros")
+# Spend the app can't explain: it has a mega/category, but a placeholder one
+# that doesn't say WHERE the money went (a generic pix, an unknown transfer,
+# the 'outros' fallback). NOT 'saque' — cash withdrawal is a resolved endpoint.
+DARK_MEGAS = ("pix_out", "transferencia", "outros")
 
 
 async def dark_matter(s: AsyncSession, f: Filter) -> tuple[int, Decimal]:
