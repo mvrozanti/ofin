@@ -22,9 +22,9 @@ DEFAULT_RULES: list[tuple] = [
     ("startswith", "itau visa", "BANK", "debit", "internal", "pagamento_cartao", True, 15),
     ("startswith", "tbi", "BANK", None, "internal", "transferencia_propria", True, 15),
     ("startswith", "int itau click", "BANK", None, "internal", "transferencia_propria", True, 15),
-    # "PIX TRANSF MARCELO": SAÍDA = transferência própria (BTG); ENTRADA = renda.
-    ("contains", "pix transf marcelo", "BANK", "debit", "internal", "transferencia_propria", True, 12),
-    ("contains", "pix transf marcelo", "BANK", "credit", "renda", "salario", False, 12),
+    # "PIX TRANSF MARCELO" = transferência própria (BTG) nas duas direções a partir
+    # de abr/2025. Os meses antigos (quando era salário) recebem override renda via SQL.
+    ("contains", "pix transf marcelo", "BANK", None, "internal", "transferencia_propria", True, 12),
 
     # User-confirmed: rent
     ("startswith", "pag boleto lucia maria", "BANK", "debit", "moradia", "aluguel", False, 20),
@@ -74,7 +74,7 @@ DEFAULT_RULES: list[tuple] = [
     ("contains", "roberta", "BANK", None, "pessoas", "Roberta", False, 40),
     ("contains", "caique", "BANK", None, "pessoas", "Caique", False, 40),
     ("contains", "lucas j", "BANK", None, "pessoas", "Lucas", False, 40),
-    ("contains", "leds in", "BANK", None, "pessoas", "Leds", False, 40),
+    ("contains", "leds in", "BANK", None, "compra_online", "equipamento", False, 40),
     ("contains", "edgard scha", "BANK", None, "pessoas", "Edgard", False, 40),
     ("contains", "leticia fig", "BANK", None, "pessoas", "Leticia", False, 40),
     ("contains", "marco tulio", "BANK", "debit", "pessoas", "Marco_Tulio", False, 40),
@@ -199,7 +199,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 9
+SEED_VERSION = 10
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -284,6 +284,15 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
     ],
     9: [
         ("add", ("contains", "red panda", None, None, "compra_online", "compra_online", False, 40)),
+    ],
+    10: [
+        # PIX TRANSF MARCELO volta a ser interno nas duas direções (é dinheiro do
+        # usuário a partir de abr/2025). Os meses antigos (< 2025-04), quando era
+        # salário, recebem override renda/salário via SQL logo após o deploy.
+        ("delete", {"pattern": "pix transf marcelo", "mega": "renda"}),
+        ("update", {"pattern": "pix transf marcelo", "mega": "internal"}, {"sign": None}),
+        # "Leds" não é pessoa — é equipamento (grow)
+        ("update", {"category": "Leds"}, {"mega": "compra_online", "category": "equipamento"}),
     ],
 }
 
