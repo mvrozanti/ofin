@@ -27,7 +27,7 @@
     <div class="sub">{{ delta(cur_out, prev_out, invert=true) }} <span class="muted">vs {{ prev_out | money }}</span></div>
   </a>
   <a class="kpi" href="/savings">
-    <div class="lbl">net / poupança</div>
+    <div class="lbl">resultado / poupança</div>
     <div class="val mono {{ 'pos' if saved >= 0 else 'neg' }}">{{ saved | money }}</div>
     <div class="sub">
       <span>taxa {{ '%.1f%%' % (savings_rate * 100) }}</span>

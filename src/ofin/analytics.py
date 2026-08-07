@@ -141,7 +141,10 @@ async def savings_rate(s: AsyncSession, f: Filter) -> list[SavingsPoint]:
         income = inc_map.get(mk, Decimal(0))
         spend = spend_map.get(mk, Decimal(0))
         saved = income - spend
-        rate = float(saved / income) if income > 0 else None
+        # saved/income explodes when income is trivial (e.g. R$0,94 of CDB
+        # interest in a month with real spend -> -200000%). Clamp to a sane band;
+        # the exact money is still in the 'saved' column.
+        rate = max(-1.0, min(1.0, float(saved / income))) if income > 0 else None
         out.append(SavingsPoint(month=mk, income=income, spend=spend, saved=saved, rate=rate, month_end=_month_end(mk)))
     return out
 

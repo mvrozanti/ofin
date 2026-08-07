@@ -51,12 +51,12 @@
             <div class="rulebox warn">
               <div class="muted">sem regra — categoria definida manualmente</div>
               <div><span class="badge warn" x-text="(drawerOverride.mega || '—') + ' / ' + (drawerOverride.category || '—')"></span></div>
-              <button type="button" class="btn ghost small" @click="clearOverride">limpar override</button>
+              <button type="button" class="btn ghost small" @click="clearOverride">limpar manual</button>
             </div>
           </template>
           <template x-if="!drawerRule && !drawerOverride">
             <div class="rulebox warn">
-              <div class="muted">sem regra correspondente — usando fallback hardcoded</div>
+              <div class="muted">sem regra correspondente — classificação automática (sem regra)</div>
             </div>
           </template>
         </section>
@@ -121,7 +121,7 @@
             </a>
             <button type="button" class="btn ghost" @click="closeDrawer">cancelar</button>
             <button type="button" class="btn" @click="submitDrawer">
-              <span x-text="drawerForm.mode === 'rule' ? 'criar regra + aplicar' : 'salvar override'"></span>
+              <span x-text="drawerForm.mode === 'rule' ? 'criar regra + aplicar' : 'salvar'"></span>
             </button>
           </div>
         </section>

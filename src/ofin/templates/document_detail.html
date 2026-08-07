@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ doc.document_type }} {{ doc.period_year }}-{{ "%02d"|format(doc.period_month or 0) }}{% endblock %}
 {% block body %}
-<p><a href="/documents">← all documents</a></p>
+<p><a href="/documents">← todos os documentos</a></p>
 <h2>{{ doc.document_type }} · {{ doc.period_year }}-{{ "%02d"|format(doc.period_month or 0) }} · {{ doc.source_path.split('/')[-1] }}</h2>
 
 {% if warnings %}
 <section>
-  <h2>warnings</h2>
+  <h2>avisos</h2>
   <div class="warnings">
   {% for w in warnings %}
     <div class="warning {{ w.severity }}">
@@ -17,9 +17,9 @@
 </section>
 {% endif %}
 
-<section class="split">
+<section class="doc-panels">
   <div>
-    <h2>summary</h2>
+    <h2>resumo</h2>
     <div class="panel">
       <div class="kv">
       {% for k, v in summary_kv %}
@@ -28,8 +28,9 @@
       {% endfor %}
       </div>
     </div>
-
-    <h2>reconciliation</h2>
+  </div>
+  <div>
+    <h2>reconciliação</h2>
     <div class="panel">
       <div class="kv">
       {% for k, expected, computed, ok in recon %}
@@ -39,23 +40,18 @@
       </div>
     </div>
   </div>
-
-  <div>
-    <h2>raw text</h2>
-    <div class="rawtext">{{ doc.raw_text }}</div>
-  </div>
 </section>
 
-<h2>transactions ({{ transactions | length }})</h2>
+<h2>transações ({{ transactions | length }})</h2>
 <div class="tbl-wrap"><table class="grid">
   <thead>
     <tr>
-      <th>date</th>
-      <th>description</th>
-      <th>category</th>
-      <th class="r">amount</th>
-      <th class="r">balance</th>
-      <th>flag</th>
+      <th>data</th>
+      <th>descrição</th>
+      <th>categoria</th>
+      <th class="r">valor</th>
+      <th class="r">saldo</th>
+      <th>marcador</th>
     </tr>
   </thead>
   <tbody>
@@ -78,4 +74,9 @@
   {% endfor %}
   </tbody>
 </table></div>
+
+<details class="rawdump">
+  <summary>texto extraído do PDF (debug)</summary>
+  <div class="rawtext">{{ doc.raw_text }}</div>
+</details>
 {% endblock %}

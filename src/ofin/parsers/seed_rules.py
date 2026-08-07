@@ -22,7 +22,9 @@ DEFAULT_RULES: list[tuple] = [
     ("startswith", "itau visa", "BANK", "debit", "internal", "pagamento_cartao", True, 15),
     ("startswith", "tbi", "BANK", None, "internal", "transferencia_propria", True, 15),
     ("startswith", "int itau click", "BANK", None, "internal", "transferencia_propria", True, 15),
-    ("contains", "pix transf marcelo", "BANK", None, "internal", "transferencia_propria", True, 12),
+    # "PIX TRANSF MARCELO": SAÍDA = transferência própria (BTG); ENTRADA = renda.
+    ("contains", "pix transf marcelo", "BANK", "debit", "internal", "transferencia_propria", True, 12),
+    ("contains", "pix transf marcelo", "BANK", "credit", "renda", "salario", False, 12),
 
     # User-confirmed: rent
     ("startswith", "pag boleto lucia maria", "BANK", "debit", "moradia", "aluguel", False, 20),
@@ -196,7 +198,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 7
+SEED_VERSION = 8
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -272,6 +274,12 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         ("add", ("contains", "victor noth", None, None, "alimentacao", "restaurante", False, 40)),
         # highlander: não é comida e o usuário não sabe o que é -> volta pro balde de triagem
         ("add", ("contains", "highlander", None, None, "outros", "outros", False, 40)),
+    ],
+    8: [
+        # "PIX TRANSF MARCELO" era internal nas DUAS direções (regra sign=None),
+        # comendo ~R$124k de renda que ENTRA. Separa: saída interna, entrada renda.
+        ("update", {"pattern": "pix transf marcelo"}, {"sign": "debit"}),
+        ("add", ("contains", "pix transf marcelo", "BANK", "credit", "renda", "salario", False, 12)),
     ],
 }
 

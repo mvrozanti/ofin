@@ -41,8 +41,11 @@ No mesmo box **documentos** ficam também:
 ## Itaú — fatura do cartão (PDF)
 
 ### Onde conseguir
-- Mesmo box **documentos** da home (canto inferior direito) → **Fatura de
-  cartão de crédito** → selecionar a fatura fechada → baixar PDF.
+- **Site (internet banking):** mesmo box **documentos** da home (canto
+  inferior direito) → **Fatura de cartão de crédito** → selecionar a fatura
+  fechada → baixar PDF.
+- **App do Itaú (celular):** **Cartões → Acessar faturas** → selecionar a
+  fatura → baixar/compartilhar o PDF.
 
 ### O que fazer com o arquivo
 1. Salvar como `fatura-YYYY-MM.pdf`.

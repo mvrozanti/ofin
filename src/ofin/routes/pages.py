@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-import shutil
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, desc, func as sqlfunc, select
@@ -24,7 +23,6 @@ from ..analyzer import accounts as accounts_q
 from ..config import settings
 from ..db import session_dep
 from ..filters import Filter
-from ..import_pdfs import import_pdf
 from ..models import Document, ParseWarning, Transaction, TransactionOverride
 
 router = APIRouter()
@@ -291,35 +289,6 @@ def _recon_row(label: str, expected, computed) -> tuple[str, str, str, bool]:
     except Exception:
         ok = False
     return (label, _money(expected), _money(computed), ok)
-
-
-@router.get("/import", response_class=HTMLResponse)
-async def import_page(request: Request):
-    return templates.TemplateResponse("import.html", {"request": request, "filter": Filter.from_request(request), "results": None})
-
-
-@router.post("/import", response_class=HTMLResponse)
-async def import_submit(
-    request: Request,
-    files: list[UploadFile] = File(...),
-    s: AsyncSession = Depends(session_dep),
-):
-    upload_dir = Path(settings().upload_dir)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    results = []
-    for f in files:
-        target = upload_dir / f.filename
-        with target.open("wb") as out:
-            shutil.copyfileobj(f.file, out)
-        try:
-            r = await import_pdf(s, target)
-            await s.commit()
-            r["filename"] = f.filename
-        except Exception as e:
-            await s.rollback()
-            r = {"filename": f.filename, "type": "error", "tx": 0, "warnings": 1, "doc_id": "", "error": str(e)}
-        results.append(r)
-    return templates.TemplateResponse("import.html", {"request": request, "filter": Filter.from_request(request), "results": results})
 
 
 @router.get("/sankey", response_class=HTMLResponse)

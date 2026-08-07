@@ -22,7 +22,6 @@
     <a href="/savings">poupança</a>
     <a href="/rules" class="cta">categorias</a>
     {% if authed() %}<a href="/documents">documentos</a>{% endif %}
-    {% if can_write() %}<a href="/import">import</a>{% endif %}
   </nav>
   <div class="nav-spacer"></div>
   <button class="filter-toggle" @click="filterOpen = !filterOpen" :aria-expanded="filterOpen">

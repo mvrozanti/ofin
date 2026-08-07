@@ -15,7 +15,7 @@
 
 <h2>tabela mensal</h2>
 <div class="tbl-wrap"><table class="grid">
-  <thead><tr><th>mês</th><th class="r">income</th><th class="r">spend</th><th class="r">poupança</th><th class="r">taxa</th></tr></thead>
+  <thead><tr><th>mês</th><th class="r">entrou</th><th class="r">saiu</th><th class="r">poupança</th><th class="r">taxa</th></tr></thead>
   <tbody>
   {% for p in series %}
     <tr data-drill="/transactions" data-filter='{"preset": "custom", "from": "{{ p.month }}-01", "to": "{{ p.month_end }}"}'>
@@ -146,8 +146,8 @@ srChart.setOption({
     { type: 'value', axisLabel: { color: '#8b94a3', formatter: (v) => v + '%' }, splitLine: { show: false } },
   ],
   series: [
-    { name: 'income', type: 'bar', yAxisIndex: 0, data: d.income, color: '#4ade80' },
-    { name: 'spend', type: 'bar', yAxisIndex: 0, data: d.spend, color: '#f87171' },
+    { name: 'entrou', type: 'bar', yAxisIndex: 0, data: d.income, color: '#4ade80' },
+    { name: 'saiu', type: 'bar', yAxisIndex: 0, data: d.spend, color: '#f87171' },
     { name: 'taxa %', type: 'line', yAxisIndex: 1, data: d.rate, smooth: true, connectNulls: false, color: '#7dd3fc', lineStyle: { width: 3 } },
   ],
 });

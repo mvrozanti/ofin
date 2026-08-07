@@ -411,3 +411,9 @@ tr.tx-row.dark { background: rgba(251, 146, 60, 0.06); }
 a.kpi { text-decoration: none; color: inherit; }
 a.kpi.kpi-dark { border-color: rgba(251, 146, 60, 0.35); }
 a.kpi.kpi-dark:hover { border-color: #fb923c; }
+
+.doc-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .doc-panels { grid-template-columns: 1fr; } }
+details.rawdump { margin-top: 24px; }
+details.rawdump > summary { cursor: pointer; color: var(--mute); font-size: 12px; user-select: none; }
+details.rawdump .rawtext { margin-top: 10px; }

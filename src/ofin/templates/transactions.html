@@ -46,9 +46,9 @@
         <td>{{ mask_pessoa(t.mega, t.category or '—') }}</td>
         <td class="r mono {% if t.amount and t.amount > 0 %}pos{% else %}neg{% endif %}">{{ t.amount | money }}</td>
         <td class="muted small">
-          {% if t.id in overrides %}<span class="badge warn">override</span>
+          {% if t.id in overrides %}<span class="badge warn">manual</span>
           {% elif t.rule_id %}#{{ t.rule_id }}
-          {% else %}<span class="muted">fallback</span>{% endif %}
+          {% else %}<span class="muted">automático</span>{% endif %}
         </td>
       </tr>
     {% endfor %}
