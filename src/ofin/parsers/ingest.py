@@ -141,6 +141,7 @@ def _fatura_report(p, parsed, warnings, doc_id, sha, version, fp, size, raw_text
         "limit_used": str(s.limit_used) if s.limit_used is not None else None,
         "domestic_subtotal": str(s.domestic_subtotal) if s.domestic_subtotal is not None else None,
         "international_subtotal": str(s.international_subtotal) if s.international_subtotal is not None else None,
+        "international_credits": str(s.international_credits) if s.international_credits is not None else None,
         "iof_repasse": str(s.iof_repasse) if s.iof_repasse is not None else None,
         "international_total_with_iof": str(s.international_total_with_iof) if s.international_total_with_iof is not None else None,
     }

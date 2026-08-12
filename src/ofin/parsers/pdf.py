@@ -47,36 +47,41 @@ def pdftotext_raw(pdf_path: str | Path) -> str:
     return _run(["-raw", "-nopgbrk"], str(pdf_path))
 
 
+ROW_Y_TOLERANCE = 1.5
+
+
 def pdf_rows(pdf_path: str | Path) -> list[list[dict]]:
     """Returns pages of rows of word-dicts with bbox.
 
     Each word: {text, x0, x1, top, bottom, page}. Rows are sorted by `top`
-    then x0. Words on the same logical line share a row.
+    then x0. Words whose `top` is within ROW_Y_TOLERANCE of the row's first
+    word share a row; hard round() buckets would split words that straddle
+    a .5 boundary.
     """
     import pdfplumber
-
-    from collections import defaultdict
 
     pages_out: list[list[dict]] = []
     with pdfplumber.open(str(pdf_path)) as pdf:
         for pi, page in enumerate(pdf.pages):
             words = page.extract_words(x_tolerance=1, y_tolerance=1, keep_blank_chars=False)
-            rows: dict[int, list[dict]] = defaultdict(list)
+            words.sort(key=lambda w: (float(w["top"]), float(w["x0"])))
+            rows: list[list[dict]] = []
+            row_top: float | None = None
             for w in words:
-                ykey = round(w["top"])
-                rows[ykey].append(
+                top = float(w["top"])
+                if row_top is None or top - row_top > ROW_Y_TOLERANCE:
+                    rows.append([])
+                    row_top = top
+                rows[-1].append(
                     {
                         "text": w["text"],
                         "x0": float(w["x0"]),
                         "x1": float(w["x1"]),
-                        "top": float(w["top"]),
+                        "top": top,
                         "bottom": float(w["bottom"]),
                         "page": pi,
                     }
                 )
-            ordered = []
-            for ykey in sorted(rows):
-                row = sorted(rows[ykey], key=lambda w: w["x0"])
-                ordered.append(row)
+            ordered = [sorted(row, key=lambda w: w["x0"]) for row in rows]
             pages_out.append(ordered)
     return pages_out

@@ -33,6 +33,9 @@ DEFAULT_RULES: list[tuple] = [
     # Linha de PAGAMENTO dentro da fatura = interno (não é gasto).
     ("startswith", "pagamento", "CREDIT", None, "internal", "pagamento_fatura", True, 15),
     ("startswith", "pgto", "CREDIT", None, "internal", "pagamento_fatura", True, 15),
+    # DEVOLUCAO SALDO CREDOR = banco zerando saldo credor da fatura (espelho de
+    # pagamento a maior). Lançamento POSITIVO no cartão, mas interno — não é gasto.
+    ("startswith", "devolucao saldo credor", "CREDIT", None, "internal", "devolucao_saldo_credor", True, 15),
     ("contains", "deb automatic", "BANK", "debit", "utilidades", "debito_automatico", False, 40),
 
     # User-confirmed: rent
@@ -208,7 +211,7 @@ DEFAULT_RULES: list[tuple] = [
 ]
 
 
-SEED_VERSION = 11
+SEED_VERSION = 12
 
 SEED_MIGRATIONS: dict[int, list[tuple]] = {
     2: [
@@ -315,6 +318,11 @@ SEED_MIGRATIONS: dict[int, list[tuple]] = {
         ("add", ("startswith", "pgto", "CREDIT", None, "internal", "pagamento_fatura", True, 15)),
         # DEB AUTOMATIC na conta corrente = conta fixa (débito automático).
         ("add", ("contains", "deb automatic", "BANK", "debit", "utilidades", "debito_automatico", False, 40)),
+    ],
+    12: [
+        # DEVOLUCAO SALDO CREDOR = banco zerando saldo credor da fatura (espelho
+        # de pagamento a maior). Lançamento positivo no cartão, mas interno.
+        ("add", ("startswith", "devolucao saldo credor", "CREDIT", None, "internal", "devolucao_saldo_credor", True, 15)),
     ],
 }
 

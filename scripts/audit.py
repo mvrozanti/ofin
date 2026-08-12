@@ -99,6 +99,16 @@ CHECKS: list[Check] = [
         description="tx ids must be unique",
     ),
     Check(
+        name="credit_positive_payment_desc",
+        sql=(
+            "SELECT COUNT(*) FROM transactions t JOIN accounts a ON a.id = t.account_id "
+            "WHERE a.type = 'CREDIT' AND t.amount > 0 "
+            "AND LOWER(t.description) LIKE 'pagamento efetuado%'"
+        ),
+        expected="zero",
+        description="fatura payment lines must be negative payments, never positive charges",
+    ),
+    Check(
         name="tx_credit_negative_unaccounted",
         sql=(
             "SELECT COUNT(*) FROM transactions t JOIN accounts a ON a.id = t.account_id "

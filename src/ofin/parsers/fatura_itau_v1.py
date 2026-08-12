@@ -16,8 +16,20 @@ from .categorize import classify_fatura
 from .pdf import pdf_rows
 
 NUM = r"\d{1,3}(?:\.\d{3})*,\d{2}"
-NUM_TOKEN_RE = re.compile(rf"^-?{NUM}$")
+NUM_TOKEN_RE = re.compile(rf"^-?{NUM}-?$")
 DATE_TOKEN_RE = re.compile(r"^(\d{2})/(\d{2})$")
+
+SIGN_ADJ_GAP = 8.0
+
+
+def _sign_token_for(prev: dict | None, num_word: dict) -> dict | None:
+    """Itaú prints negatives as a standalone '-' word right before the value
+    ('-' x1 and value x0 nearly touch). Returns the sign word, or None."""
+    if prev is None or prev["text"] != "-":
+        return None
+    if num_word["x0"] - prev["x1"] > SIGN_ADJ_GAP:
+        return None
+    return prev
 
 FX_CCYS = {"USD", "EUR", "BRL", "GBP", "CHF", "ARS", "JPY", "CAD", "AUD"}
 
@@ -64,6 +76,7 @@ class FaturaSummary:
     limit_used: Decimal | None
     domestic_subtotal: Decimal | None
     international_subtotal: Decimal | None
+    international_credits: Decimal | None
     iof_repasse: Decimal | None
     international_total_with_iof: Decimal | None
 
@@ -111,12 +124,26 @@ class _TxCandidate:
     words: list[dict]
     value_token: dict | None
     column_x0: float
+    sign_token: dict | None = None
 
     @property
     def description(self) -> str:
         return " ".join(
-            w["text"] for w in self.words if w is not self.date_token and w is not self.value_token
+            w["text"]
+            for w in self.words
+            if w is not self.date_token and w is not self.value_token and w is not self.sign_token
         ).strip()
+
+    @property
+    def value(self) -> Decimal | None:
+        if self.value_token is None:
+            return None
+        v = parse_brl(self.value_token["text"])
+        if v is None:
+            return None
+        if self.sign_token is not None and v > 0:
+            v = -v
+        return v
 
 
 COLUMN_SPAN = 200.0
@@ -145,9 +172,11 @@ def _extract_candidates_in_row(row: list[dict], row_idx: int) -> list[_TxCandida
             continue
         if w["x0"] > current.column_x0 + COLUMN_SPAN:
             continue
+        prev = current.words[-1] if current.words else None
         current.words.append(w)
         if NUM_TOKEN_RE.match(w["text"]):
             current.value_token = w
+            current.sign_token = _sign_token_for(prev, w)
     if current is not None and current.value_token is not None:
         out.append(current)
     return out
@@ -187,31 +216,53 @@ def _has_fx_followup(
 
 
 def _parse_summary(rows: list[list[dict]]) -> FaturaSummary:
+    def _value_in_row(row: list[dict], ln: str) -> str | None:
+        positions = [(w["x0"], w["x1"], w["text"], _denoise(w["text"])) for w in row]
+        glued = "".join(t[3] for t in positions)
+        idx = glued.find(ln)
+        if idx < 0:
+            return None
+        running = 0
+        label_end_x = None
+        for x0, x1, _, dn in positions:
+            running_end = running + len(dn)
+            if running <= idx + len(ln) - 1 < running_end:
+                label_end_x = x1
+                break
+            running = running_end
+        after = [w for w in row if label_end_x is None or w["x0"] >= label_end_x]
+        for i, w in enumerate(after):
+            if _is_num_token(w["text"]):
+                sign = _sign_token_for(after[i - 1] if i > 0 else None, w)
+                return ("-" + w["text"]) if sign is not None else w["text"]
+        return None
+
     def find_value_after(label: str) -> str | None:
         ln = _denoise(label)
         for row in rows:
-            text = _row_text(row)
-            if ln not in _denoise(text):
+            if ln not in _denoise(_row_text(row)):
                 continue
-            positions = [(w["x0"], w["x1"], w["text"], _denoise(w["text"])) for w in row]
-            glued = "".join(t[3] for t in positions)
-            idx = glued.find(ln)
-            if idx < 0:
-                continue
-            running = 0
-            label_end_x = None
-            for x0, x1, _, dn in positions:
-                running_end = running + len(dn)
-                if running <= idx + len(ln) - 1 < running_end:
-                    label_end_x = x1
-                    break
-                running = running_end
-            for w in row:
-                if label_end_x is not None and w["x0"] < label_end_x:
-                    continue
-                if _is_num_token(w["text"]):
-                    return w["text"]
+            v = _value_in_row(row, ln)
+            if v is not None:
+                return v
         return None
+
+    def find_value_sum(label: str) -> Decimal | None:
+        """Sum the label's value over every matching row (multi-card faturas
+        print one 'Lançamentos no cartão (final NNNN)' subtotal per card)."""
+        ln = _denoise(label)
+        total: Decimal | None = None
+        for row in rows:
+            if ln not in _denoise(_row_text(row)):
+                continue
+            v = _value_in_row(row, ln)
+            if v is None:
+                continue
+            parsed = parse_brl(v)
+            if parsed is None:
+                continue
+            total = parsed if total is None else total + parsed
+        return total
 
     def find_date_in(label: str) -> date | None:
         ln = _denoise(label)
@@ -240,8 +291,9 @@ def _parse_summary(rows: list[list[dict]]) -> FaturaSummary:
     limit_available = parse_brl(find_value_after("Limite disponível") or "")
     limit_used = parse_brl(find_value_after("Limite total utilizado") or "")
 
-    domestic_subtotal = parse_brl(find_value_after("Lançamentos no cartão") or "")
+    domestic_subtotal = find_value_sum("Lançamentos no cartão")
     international_subtotal = parse_brl(find_value_after("Total transações inter") or "")
+    international_credits = find_value_sum("Crédito cartão final")
     iof_repasse = parse_brl(find_value_after("Repasse de IOF em R$") or "")
     international_total_with_iof = parse_brl(find_value_after("Total lançamentos inter") or "")
 
@@ -272,24 +324,17 @@ def _parse_summary(rows: list[list[dict]]) -> FaturaSummary:
         limit_used=limit_used,
         domestic_subtotal=domestic_subtotal,
         international_subtotal=international_subtotal,
+        international_credits=international_credits,
         iof_repasse=iof_repasse,
         international_total_with_iof=international_total_with_iof,
     )
 
 
-def _infer_year(when_mmdd: tuple[int, int], anchor: date | None) -> int:
-    if anchor is None:
-        return 2026
-    month, _ = when_mmdd
+def _infer_year(month: int, anchor: date) -> int:
     yr = anchor.year
     if month > anchor.month + 1:
         yr -= 1
     return yr
-
-
-_FILLER_DESC_PATTERNS = (
-    re.compile(r"^\s*$"),
-)
 
 
 def parse_fatura(pdf_path: str | Path) -> FaturaParseResult:
@@ -298,6 +343,26 @@ def parse_fatura(pdf_path: str | Path) -> FaturaParseResult:
     summary = _parse_summary(rows)
     result = FaturaParseResult(summary=summary)
 
+    anchor_date = summary.posting_date or summary.emission_date or summary.due_date
+    if anchor_date is None:
+        result.warnings.append(
+            (
+                "error",
+                "anchor_missing",
+                "no posting/emission/due date found; cannot infer transaction years",
+                None,
+            )
+        )
+    else:
+        _parse_candidates(rows, anchor_date, result)
+
+    if not result.payments and summary.payment_amount is not None:
+        _synthesize_payment_from_summary(summary, result)
+
+    return result
+
+
+def _parse_candidates(rows: list[list[dict]], anchor_date: date, result: FaturaParseResult) -> None:
     excl_zones = _parcelados_zones(rows)
 
     candidates: list[_TxCandidate] = []
@@ -307,21 +372,25 @@ def parse_fatura(pdf_path: str | Path) -> FaturaParseResult:
                 continue
             candidates.append(c)
 
-    anchor_date = summary.posting_date
-
     for cand in candidates:
         when_m = DATE_TOKEN_RE.match(cand.date_token["text"])
         if not when_m:
             continue
         mm = int(when_m.group(2))
         dd = int(when_m.group(1))
-        year = _infer_year((mm, dd), anchor_date)
-        when = date(year, mm, dd)
-        value = parse_brl(cand.value_token["text"]) if cand.value_token else None
+        year = _infer_year(mm, anchor_date)
+        raw_line = _row_text(rows[cand.row_idx])[:240]
+        try:
+            when = date(year, mm, dd)
+        except ValueError:
+            result.warnings.append(
+                ("warn", "date_parse", f"invalid date token '{cand.date_token['text']}'", raw_line)
+            )
+            continue
+        value = cand.value
         if value is None:
             continue
         desc = cand.description
-        raw_line = _row_text(rows[cand.row_idx])[:240]
 
         if _looks_like_payment(desc, value):
             result.payments.append(
@@ -335,17 +404,13 @@ def parse_fatura(pdf_path: str | Path) -> FaturaParseResult:
         category_hint, city = _extract_category_city(rows, cand.row_idx, cand.column_x0)
         category = classify_fatura(desc, category_hint=category_hint, is_international=is_intl)
 
-        signed = value
-        if _is_refund_description(desc) and signed > 0:
-            signed = -signed
-
         result.transactions.append(
             FaturaTx(
                 when=when,
                 merchant=_clean_merchant(desc),
                 category=category,
                 city=city,
-                amount_brl=signed,
+                amount_brl=value,
                 fx_original_value=fx_val,
                 fx_currency=fx_ccy,
                 fx_rate=fx_rate,
@@ -354,33 +419,75 @@ def parse_fatura(pdf_path: str | Path) -> FaturaParseResult:
             )
         )
 
-    return result
+
+def _synthesize_payment_from_summary(summary: FaturaSummary, result: FaturaParseResult) -> None:
+    """Old-layout faturas print the payment only in the summary box, never as
+    a lançamento row — synthesize it so every month carries its payment tx."""
+    when = summary.payment_date or summary.posting_date
+    if when is None:
+        return
+    amount = summary.payment_amount
+    if amount > 0:
+        result.warnings.append(
+            ("warn", "payment_sign", f"summary payment amount came out positive: {amount}", None)
+        )
+        amount = -amount
+    result.payments.append(
+        FaturaPayment(
+            when=when,
+            description="PAGAMENTO EFETUADO",
+            amount=amount,
+            raw_line="(summary) pagamento efetuado",
+        )
+    )
 
 
-def _parcelados_zones(rows: list[list[dict]]) -> list[tuple[int, float, float]]:
-    """Detect 'Compras parceladas' / 'Simulação de Compras' / 'Próximas faturas' zones.
+ZONE_HEADER_PHRASES = ("comprasparceladas", "simulacaodecompras")
+
+
+def _word_at_glued_index(row: list[dict], idx: int) -> dict | None:
+    running = 0
+    for w in row:
+        running_end = running + len(_denoise(w["text"]))
+        if running <= idx < running_end:
+            return w
+        running = running_end
+    return None
+
+
+def _parcelados_zones(rows: list[list[dict]]) -> list[tuple[int, int, float, float]]:
+    """Detect 'Compras parceladas' / 'Simulação de Compras' zones.
 
     Candidates within these zones are billing-future placeholders, not current
     fatura lançamentos, so they must be filtered out before reconciliation.
+    A zone is anchored at the x0 of the word where the header phrase itself
+    starts (headers can share a row with a real transaction in the other
+    column, and some layouts fragment words into sub-tokens) and ends at the
+    last row of its page.
     """
-    zones: list[tuple[int, float, float]] = []
+    last_row_of_page: dict[int, int] = {}
+    for ri, row in enumerate(rows):
+        if row:
+            last_row_of_page[row[0]["page"]] = ri
+    zones: list[tuple[int, int, float, float]] = []
     for ri, row in enumerate(rows):
         glued = "".join(_denoise(w["text"]) for w in row)
-        if (
-            "comprasparceladas" in glued
-            or "simulacaodecompras" in glued
-            or ("proximafatura" in glued and "demaisfaturas" in glued)
-        ):
-            for w in row:
-                if _denoise(w["text"]).startswith("co") or _denoise(w["text"]).startswith("si"):
-                    zones.append((ri, w["x0"] - 5, w["x0"] + COLUMN_SPAN))
-                    break
+        for phrase in ZONE_HEADER_PHRASES:
+            idx = glued.find(phrase)
+            if idx < 0:
+                continue
+            anchor = _word_at_glued_index(row, idx)
+            if anchor is None:
+                continue
+            end_ri = last_row_of_page.get(row[0]["page"], len(rows) - 1)
+            zones.append((ri, end_ri, anchor["x0"] - 5, anchor["x0"] + COLUMN_SPAN))
+            break
     return zones
 
 
-def _in_any_zone(cand: _TxCandidate, zones: list[tuple[int, float, float]]) -> bool:
-    for start_ri, x_lo, x_hi in zones:
-        if cand.row_idx >= start_ri and x_lo <= cand.column_x0 <= x_hi:
+def _in_any_zone(cand: _TxCandidate, zones: list[tuple[int, int, float, float]]) -> bool:
+    for start_ri, end_ri, x_lo, x_hi in zones:
+        if start_ri <= cand.row_idx <= end_ri and x_lo <= cand.column_x0 <= x_hi:
             return True
     return False
 
@@ -390,11 +497,6 @@ def _looks_like_payment(desc: str, value: Decimal) -> bool:
         return False
     d = _norm(desc).strip()
     return d.startswith("pagamento")
-
-
-def _is_refund_description(desc: str) -> bool:
-    d = _norm(desc)
-    return d.startswith("estorno") or d.startswith("devolucao") or d.startswith("cancelamento")
 
 
 def _clean_merchant(desc: str) -> str:

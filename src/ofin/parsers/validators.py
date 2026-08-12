@@ -81,6 +81,16 @@ def validate_extrato(result) -> list[Warning_]:
                 )
             )
 
+    for field in ("entradas_total", "saidas_total", "opening_balance", "closing_balance"):
+        if getattr(s, field) is None:
+            out.append(
+                Warning_(
+                    SEVERITY_INFO,
+                    "extrato.summary_field_missing",
+                    f"summary field '{field}' not parsed; its reconciliation check was skipped",
+                )
+            )
+
     return out
 
 
@@ -101,15 +111,17 @@ def validate_fatura(result) -> list[Warning_]:
             )
         )
 
-    if s.international_subtotal is not None and sum_intl != s.international_subtotal:
-        out.append(
-            Warning_(
-                SEVERITY_ERROR,
-                "fatura.lancamentos_internacional",
-                f"sum(intl) = {sum_intl} != Total transações inter = {s.international_subtotal}",
-                diff={"computed": str(sum_intl), "expected": str(s.international_subtotal)},
+    if s.international_subtotal is not None:
+        expected_intl = s.international_subtotal - (s.international_credits or Decimal(0))
+        if sum_intl != expected_intl:
+            out.append(
+                Warning_(
+                    SEVERITY_ERROR,
+                    "fatura.lancamentos_internacional",
+                    f"sum(intl) = {sum_intl} != transações inter − créditos = {expected_intl}",
+                    diff={"computed": str(sum_intl), "expected": str(expected_intl)},
+                )
             )
-        )
 
     if s.current_charges is not None:
         computed = sum_dom + sum_intl + (s.iof_repasse or Decimal(0))
@@ -120,6 +132,41 @@ def validate_fatura(result) -> list[Warning_]:
                     "fatura.total_lancamentos",
                     f"sum(dom+intl+iof) = {computed} != current_charges = {s.current_charges}",
                     diff={"computed": str(computed), "expected": str(s.current_charges)},
+                )
+            )
+
+    sum_pay = sum((p.amount for p in result.payments), Decimal(0))
+
+    if s.payment_amount is not None and result.payments:
+        if not approx_eq(sum_pay, s.payment_amount, "0.01"):
+            out.append(
+                Warning_(
+                    SEVERITY_ERROR,
+                    "fatura.pagamentos",
+                    f"sum(payments) = {sum_pay} != summary payment_amount = {s.payment_amount}",
+                    diff={"computed": str(sum_pay), "expected": str(s.payment_amount)},
+                )
+            )
+
+    if s.previous_total is not None and s.current_charges is not None and s.total is not None:
+        computed_total = s.previous_total + sum_pay + s.current_charges
+        if not approx_eq(computed_total, s.total, "0.02"):
+            out.append(
+                Warning_(
+                    SEVERITY_ERROR,
+                    "fatura.equacao_fatura",
+                    f"previous + payments + charges = {computed_total} != total = {s.total}",
+                    diff={"computed": str(computed_total), "expected": str(s.total)},
+                )
+            )
+
+    for field in ("posting_date", "previous_total", "current_charges", "total"):
+        if getattr(s, field) is None:
+            out.append(
+                Warning_(
+                    SEVERITY_INFO,
+                    "fatura.summary_field_missing",
+                    f"summary field '{field}' not parsed; its reconciliation check was skipped",
                 )
             )
 

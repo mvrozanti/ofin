@@ -55,18 +55,27 @@ def parse_date_short(s: str, year: int) -> date | None:
     m = DATE_SHORT_RE.match(s.strip())
     if not m:
         return None
-    return date(year, int(m.group(2)), int(m.group(1)))
+    try:
+        return date(year, int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
 
 
 def parse_date_full(s: str) -> date | None:
     m = DATE_DDMMYYYY_RE.search(s)
     if m:
-        return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        try:
+            return date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
     m = DATE_DDMMYY_RE.search(s)
     if m:
         yy = int(m.group(3))
         year = 2000 + yy if yy < 70 else 1900 + yy
-        return date(year, int(m.group(2)), int(m.group(1)))
+        try:
+            return date(year, int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
     return None
 
 

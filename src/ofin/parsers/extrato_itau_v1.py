@@ -64,15 +64,6 @@ def _scrub_movement(text: str) -> str:
     text = TABLE_HEADER2_RE.sub("", text)
     return text
 
-SWEEP_CREDIT_DESC = {
-    "res aplic aut mais",
-    "resgate aplic aut mais",
-}
-SWEEP_DEBIT_DESC = {
-    "apl aplic aut mais",
-    "aplicacao aplic aut mais",
-}
-INTEREST_DESC = {"rend pago aplic aut mais"}
 CDB_BALANCE_DESC = {"saldo aplic aut mais"}
 SUMMARY_DESC_PREFIXES = (
     "saldo anterior",
@@ -81,7 +72,6 @@ SUMMARY_DESC_PREFIXES = (
     "totalizador de aplicacoes",
     "na conta corrente",
     "(1) os valores referentes",
-    "data",
     "descricao",
     "(creditos)",
     "(debitos)",
@@ -189,70 +179,6 @@ def _extract_tokens(line: str) -> tuple[str, list[str]]:
     return desc, nums
 
 
-SELF_NAME_TOKENS = ("marcelo", "vironda", "rozanti")
-
-
-def _is_self(desc_norm: str) -> bool:
-    return any(tok in desc_norm for tok in SELF_NAME_TOKENS)
-
-
-def _classify(desc: str, desc_norm: str) -> tuple[str, bool, bool, bool]:
-    """returns (category, is_sweep, is_interest, is_internal)."""
-    if desc_norm in SWEEP_CREDIT_DESC:
-        return "sweep_resgate", True, False, True
-    if desc_norm in SWEEP_DEBIT_DESC:
-        return "sweep_aplicacao", True, False, True
-    if desc_norm in INTEREST_DESC:
-        return "rendimento_cdb", False, True, False
-    if desc_norm.startswith("est pix") or desc_norm.startswith("est tef") or desc_norm.startswith("est ted") or desc_norm.startswith("est on"):
-        return "estorno", False, False, True
-    if desc_norm.startswith("estorno"):
-        return "estorno", False, False, True
-    if "fatura" in desc_norm and ("itau" in desc_norm or "platinu" in desc_norm or "visa" in desc_norm):
-        return "pagamento_cartao", False, False, True
-    if desc_norm.startswith("tbi") or desc_norm.startswith("int itau click"):
-        return "transferencia_propria", False, False, True
-    if desc_norm.startswith("itau visa"):
-        return "pagamento_cartao", False, False, True
-    if desc_norm.startswith("dev pix"):
-        return "devolucao_pix", False, False, False
-    if desc_norm.startswith("dev "):
-        return "devolucao", False, False, False
-    if desc_norm.startswith("remuneracao") or "salario" in desc_norm[:20]:
-        return "salario", False, False, False
-    if desc_norm.startswith("credito cartao") or desc_norm.startswith("credito de cartao"):
-        return "credito_cartao", False, False, False
-    if desc_norm.startswith("ressarcimento"):
-        return "ressarcimento", False, False, False
-    if desc_norm.startswith("pix") and _is_self(desc_norm):
-        return "pix_proprio", False, False, True
-    if desc_norm.startswith("transf") and _is_self(desc_norm):
-        return "transferencia_propria", False, False, True
-    if desc_norm.startswith("pix"):
-        return "pix", False, False, False
-    if desc_norm.startswith("rshop") or desc_norm.startswith("rscss") or desc_norm.startswith("rsccs") or desc_norm.startswith("mobilepag"):
-        return "compra_debito", False, False, False
-    if desc_norm.startswith("on ifd") or "ifood" in desc_norm or "pay -ifood" in desc_norm or "pay-ifood" in desc_norm:
-        return "ifood", False, False, False
-    if desc_norm.startswith("pag boleto"):
-        return "boleto", False, False, False
-    if "pag tit banco" in desc_norm or desc_norm.startswith("mobilepag"):
-        return "boleto", False, False, False
-    if desc_norm.startswith("pagto salario"):
-        return "salario", False, False, False
-    if desc_norm.startswith("da ") or desc_norm.startswith("debito automatico") or desc_norm.startswith("db cob"):
-        return "debito_automatico", False, False, False
-    if desc_norm.startswith("sispag"):
-        return "sispag", False, False, False
-    if desc_norm.startswith("saque"):
-        return "saque", False, False, False
-    if (desc_norm.startswith("ted") or desc_norm.startswith("doc") or desc_norm.startswith("int ted")) and _is_self(desc_norm):
-        return "transferencia_propria", False, False, True
-    if desc_norm.startswith("ted") or desc_norm.startswith("doc") or desc_norm.startswith("int ted"):
-        return "transferencia", False, False, False
-    return "outros", False, False, False
-
-
 def parse_extrato(text: str) -> ExtratoParseResult:
     header = parse_header(text)
     if not header:
@@ -329,13 +255,11 @@ def _slice_movement(text: str) -> str | None:
 
 REPEAT_HEADER_TOKENS = (
     "extrato mensal",
-    "ag 0428",
-    "(créditos)",
-    "(débitos)",
-    "data",
-    "descrição",
+    "(creditos)",
+    "(debitos)",
+    "descricao",
     "entradas r$",
-    "saídas r$",
+    "saidas r$",
     "saldo r$",
     "este material",
 )

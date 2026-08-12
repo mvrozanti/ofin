@@ -380,6 +380,7 @@ def _fatura_summary_dict(result: FaturaParseResult) -> dict:
         "limit_used": s.limit_used,
         "domestic_subtotal": s.domestic_subtotal,
         "international_subtotal": s.international_subtotal,
+        "international_credits": s.international_credits,
         "iof_repasse": s.iof_repasse,
         "international_total_with_iof": s.international_total_with_iof,
         "n_payments": len(result.payments),
