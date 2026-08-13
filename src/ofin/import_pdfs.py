@@ -202,10 +202,7 @@ async def _extrato_to_tx_rows(s_db: AsyncSession, doc_id: str, account_id: str, 
         mega, category, is_internal_eng, rule_id = await classify_tx(
             s_db, description=t.description, account_type="BANK", sign=sign,
         )
-        if t.is_sweep:
-            is_internal_final = True
-        else:
-            is_internal_final = is_internal_eng or t.is_internal
+        is_internal_final = True if t.is_sweep else is_internal_eng
         merchant = None
         payment_data = None
         d_lower = (t.description_norm or t.description).lower()
